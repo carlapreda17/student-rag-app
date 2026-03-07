@@ -13,16 +13,77 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import s from "../../styles";
 import * as Font from 'expo-font';
 import { COLORS, FONT } from "../../constants/theme";
+import { useAuth } from "../components/AuthContext";
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+
+interface LoginErrors{
+    email?: string;
+    password?: string;
+    general?: string;
+} 
 
 export default function Login({ navigation }: any) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [errors, setErrors] = useState<LoginErrors>({});
+    const [isLoading, setIsLoading] = useState(false);
+    const { login } = useAuth();
 
-    const handleLogin = () => {
+
+    const handleLogin = async() => {
         console.log("Login pressed", { email, password });
-        // Aici vei adăuga logica de autentificare
-        // După autentificare cu succes, navighează la Home
-        navigation.navigate("Home");
+        setErrors({});
+        let isValid = true;
+        let newErrors: LoginErrors = {};
+
+        if (!email.trim()) {
+            newErrors.email = "Te rugăm să introduci email-ul.";
+            isValid = false;
+        }
+        if (!password) {
+            newErrors.password = "Te rugăm să introduci parola.";
+            isValid = false;
+        }
+
+        if (!isValid) {
+            setErrors(newErrors);
+            return; 
+        }
+
+        setIsLoading(true);
+        try {
+           
+            // 4. Facem cererea POST către FastAPI
+            console.log({API_URL});
+            const response = await fetch(`${API_URL}/login`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password,
+                }),
+            });
+
+            const data = await response.json();
+           
+
+            if (response.ok) {
+                console.log("Autentificare reușită:", data.user);
+                await login(data.user);
+                navigation.navigate("HomePage");
+            } else {
+                setErrors({ general: data.detail || "Email sau parolă incorectă." });
+            }
+        } catch (error) {
+            console.error("Eroare de rețea:", error);
+            setErrors({ general: "Nu ne-am putut conecta la server. Verifică conexiunea la internet." });
+        } finally {
+            setIsLoading(false);
+        }
+
     };
 
     const handleRegister = () => {
@@ -45,11 +106,17 @@ export default function Login({ navigation }: any) {
                             <Text style={styles.subtitle}>Conectează-te la contul tău</Text>
                         </View>
 
+                        {errors.general && (
+                            <View style={styles.errorBox}>
+                                <Text style={styles.generalErrorText}>{errors.general}</Text>
+                            </View>
+                        )}
+
                         <View style={styles.form}>
                             <View style={styles.inputContainer}>
                                 <Text style={styles.label}>Email</Text>
                                 <TextInput
-                                    style={styles.input}
+                                    style={[styles.input, errors.email && styles.inputError]}
                                     placeholder="exemplu@email.com"
                                     value={email}
                                     onChangeText={setEmail}
@@ -57,19 +124,22 @@ export default function Login({ navigation }: any) {
                                     autoCapitalize="none"
                                     autoCorrect={false}
                                 />
+                                {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
                             </View>
 
                             <View style={styles.inputContainer}>
                                 <Text style={styles.label}>Parolă</Text>
                                 <TextInput
-                                    style={styles.input}
+                                    style={[styles.input, errors.password && styles.inputError]}
                                     placeholder="Introdu parola"
                                     value={password}
                                     onChangeText={setPassword}
                                     secureTextEntry
                                     autoCapitalize="none"
                                     autoCorrect={false}
+
                                 />
+                                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
                             </View>
 
                             <TouchableOpacity style={styles.forgotPassword}>
@@ -148,6 +218,9 @@ const styles = StyleSheet.create({
         fontSize: 16,
         color: "#333",
     },
+    inputError: {
+        borderColor: "#ff4444",
+    },
     forgotPassword: {
         alignSelf: "flex-end",
         marginBottom: 24,
@@ -190,5 +263,28 @@ const styles = StyleSheet.create({
         color: COLORS.mainblue,
         fontSize: 14,
         fontWeight: "600",
+    },
+    inputErrorBorder: {
+        borderColor: "#ff4444",
+        borderWidth: 1.5,
+    },
+    errorText: {
+        color: "#ff4444",
+        fontSize: 12,
+        marginTop: 4,
+        alignSelf: 'flex-start'
+    },
+    errorBox: {
+        backgroundColor: "#ffebee",
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 20,
+        borderLeftWidth: 4,
+        borderColor: "#ff4444"
+    },
+    generalErrorText: {
+        color: "#c62828",
+        fontSize: 14,
+        fontWeight: "500",
     },
 });

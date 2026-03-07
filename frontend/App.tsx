@@ -5,6 +5,9 @@ import { StatusBar, View, StyleSheet } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Login from "./src/pages/Login"
+import Register from "./src/pages/Register"
+import HomePage from "./src/pages/HomePage";
+import { AuthProvider } from "./src/components/AuthContext";
 import s from "./styles"
 
 const Stack = createNativeStackNavigator();
@@ -25,21 +28,23 @@ export default function App() {
     }, []);
 
     return (
-        <View style={s.root}>
-            <StatusBar barStyle="dark-content"/>
-            <NavigationContainer>
-                <Stack.Navigator
-                    initialRouteName="Login"
-                    screenOptions={{
-                        headerShown: false,
-                        animation: "slide_from_right",
-                        cardStyle: { backgroundColor: COLORS.yellow},
-                        flex: 1
-                    }}
-                >
-                    <Stack.Screen name="Login" component={Login} />
-                </Stack.Navigator>
-            </NavigationContainer>
-        </View>
+        <AuthProvider>
+            <View style={s.root}>
+                <StatusBar barStyle="dark-content"/>
+                <NavigationContainer>
+                    <Stack.Navigator
+                        initialRouteName="Login"
+                        screenOptions={{
+                            headerShown: false,
+                            animation: "slide_from_right",
+                        }}
+                    >
+                        <Stack.Screen name="Login" component={Login} />
+                        <Stack.Screen name="Register" component={Register} />
+                        <Stack.Screen name="HomePage" component={HomePage} />
+                    </Stack.Navigator>
+                </NavigationContainer>
+            </View>
+        </AuthProvider>
     );
 }
