@@ -8,12 +8,18 @@ import {
     KeyboardAvoidingView,
     Platform,
     ScrollView,
+    Dimensions
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import s from "../../styles";
 import * as Font from 'expo-font';
 import { COLORS, FONT } from "../../constants/theme";
 import { useAuth } from "../components/AuthContext";
+import CustomInput from "../components/CustomInput";
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+const { height } = Dimensions.get("window");
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 
@@ -26,6 +32,7 @@ interface LoginErrors{
 export default function Login({ navigation }: any) {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
     const [errors, setErrors] = useState<LoginErrors>({});
     const [isLoading, setIsLoading] = useState(false);
     const { login } = useAuth();
@@ -72,7 +79,7 @@ export default function Login({ navigation }: any) {
 
             if (response.ok) {
                 console.log("Autentificare reușită:", data.user);
-                await login(data.user);
+                await login(data.user, data.token);
                 navigation.navigate("HomePage");
             } else {
                 setErrors({ general: data.detail || "Email sau parolă incorectă." });
@@ -86,205 +93,249 @@ export default function Login({ navigation }: any) {
 
     };
 
+
     const handleRegister = () => {
         navigation.navigate("Register");
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={styles.keyboardView}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+            <LinearGradient
+                colors={["#EEF2FF", "#FFF7ED", "#ffffff"]}
+                style={{ flex: 1 }}
             >
                 <ScrollView
                     contentContainerStyle={styles.scrollContainer}
                     keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                 >
-                    <View style={styles.container}>
-                        <View style={styles.header}>
-                            <Text style={styles.title}>Bun venit!</Text>
-                            <Text style={styles.subtitle}>Conectează-te la contul tău</Text>
-                        </View>
-
+                    {/* Top blob decorativ */}
+                    <View style={styles.topBlob} />
+                    {/* Logo */}
+                        <Image
+                            source={require("../../assets/StuddAIaf.svg")}
+                            style={styles.logo}
+                            contentFit="contain"
+                        />
+                   
+                    {/* Card principal */}
+                    <View style={styles.card}>
+                        <Text style={styles.title}>Bun venit la StuddAI!</Text>
+                        <Text style={styles.subtitle}>
+                            Conectează-te pentru a continua
+                        </Text>
                         {errors.general && (
                             <View style={styles.errorBox}>
-                                <Text style={styles.generalErrorText}>{errors.general}</Text>
+                                <Text style={styles.errorText}>⚠️ {errors.general}</Text>
                             </View>
                         )}
-
-                        <View style={styles.form}>
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Email</Text>
-                                <TextInput
-                                    style={[styles.input, errors.email && styles.inputError]}
-                                    placeholder="exemplu@email.com"
-                                    value={email}
-                                    onChangeText={setEmail}
-                                    keyboardType="email-address"
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                />
-                                {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-                            </View>
-
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Parolă</Text>
-                                <TextInput
-                                    style={[styles.input, errors.password && styles.inputError]}
-                                    placeholder="Introdu parola"
-                                    value={password}
-                                    onChangeText={setPassword}
-                                    secureTextEntry
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-
-                                />
-                                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-                            </View>
-
-                            <TouchableOpacity style={styles.forgotPassword}>
-                                <Text style={styles.forgotPasswordText}>Ai uitat parola?</Text>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                style={styles.loginButton}
-                                onPress={handleLogin}
-                                activeOpacity={0.8}
+                    
+                        <CustomInput
+                            placeholder="Introdu email-ul"
+                            value={email}
+                            setValue={setEmail}
+                            type="account"
+                        />
+                        {errors.email && (
+                            <Text style={styles.fieldError}>{errors.email}</Text>
+                        )}
+                       
+                      
+                        <CustomInput
+                            placeholder="Introdu parola"
+                            value={password}
+                            setValue={setPassword}
+                            type="lock"
+                            secureTextEntry={!showPassword}
+                            onToggleShowPassword={() => setShowPassword(!showPassword)}
+                        />
+                        {errors.password && (
+                                <Text style={styles.fieldError}>{errors.password}</Text>
+                        )}
+                        
+                        <TouchableOpacity style={styles.forgotPassword}>
+                            <Text style={styles.forgotPasswordText}>Ai uitat parola?</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}
+                            onPress={handleLogin}
+                            activeOpacity={0.85}
+                            disabled={isLoading}
+                        >
+                            <LinearGradient
+                                colors={[COLORS.mainblue, "#3B5FD4"]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.loginButtonGradient}
                             >
-                                <Text style={styles.loginButtonText}>Conectare</Text>
+                                <Text style={styles.loginButtonText}>
+                                    {isLoading ? "Se conectează..." : "Conectare"}
+                                </Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+                        <View style={styles.dividerRow}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>sau</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+                        <View style={styles.signupContainer}>
+                            <Text style={styles.signupText}>Nu ai cont? </Text>
+                            <TouchableOpacity onPress={handleRegister}>
+                                <Text style={styles.signupLink}>Înregistrează-te</Text>
                             </TouchableOpacity>
-
-                            <View style={styles.signupContainer}>
-                                <Text style={styles.signupText}>Nu ai cont? </Text>
-                                <TouchableOpacity onPress={handleRegister}>
-                                    <Text style={styles.signupLink}>Înregistrează-te</Text>
-                                </TouchableOpacity>
-                            </View>
                         </View>
                     </View>
                 </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
-    );
+            </LinearGradient>
+        </KeyboardAvoidingView>
+);
+
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: "#f5f5f5",
-    },
-    keyboardView: {
-        flex: 1,
-    },
     scrollContainer: {
         flexGrow: 1,
-        justifyContent: "center",
-        padding: 24,
+        alignItems: "center",
+        paddingBottom: 40,
     },
-    container: {
-        width: "100%",
+    // Blob decorativ în spate
+    topBlob: {
+        position: "absolute",
+        top: -80,
+        right: -80,
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: COLORS.mainblue,
+        opacity: 0.07,
     },
-    header: {
-        marginBottom: 40,
+   
+    logo: {
+        width: 230, // era 110, acum mai mare
+        height: 230,
+        marginTop: height * 0.1,
+    },
+    // Card
+    card: {
+        width: "90%",
+        backgroundColor: "#fff",
+        borderRadius: 28,
+        padding: 28,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 8,
     },
     title: {
-        fontSize: 32,
-        fontWeight: "bold",
-        color: "#1a1a1a",
-        marginBottom: 8,
+        fontSize: 26,
+        fontWeight: "800",
+        color: COLORS.orange,
+        marginBottom: 6,
     },
     subtitle: {
-        fontSize: 16,
-        color: "#666",
-    },
-    form: {
-        width: "100%",
-    },
-    inputContainer: {
-        marginBottom: 20,
-    },
-    label: {
         fontSize: 14,
+        color: COLORS.mainblue,
+        marginBottom: 24,
+    },
+    // Error general
+    errorBox: {
+        backgroundColor: "#FFF0F0",
+        borderLeftWidth: 4,
+        borderLeftColor: "#FF4D4D",
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 16,
+    },
+    errorText: {
+        color: "#CC0000",
+        fontSize: 13,
+    },
+    // Input grup
+    inputGroup: {
+        marginBottom: 14,
+    },
+    inputLabel: {
+        fontSize: 13,
         fontWeight: "600",
-        color: "#333",
-        marginBottom: 8,
+        color: "#444",
+        marginBottom: 6,
+        marginLeft: 2,
     },
-    input: {
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 12,
-        padding: 16,
-        fontSize: 16,
-        color: "#333",
+    fieldError: {
+        color: "#CC0000",
+        fontSize: 12,
+        marginTop: 4,
+        marginLeft: 2,
     },
-    inputError: {
-        borderColor: "#ff4444",
-    },
+    // Forgot
     forgotPassword: {
         alignSelf: "flex-end",
-        marginBottom: 24,
+        marginBottom: 22,
+        marginTop: 2,
     },
     forgotPasswordText: {
         color: COLORS.mainblue,
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: "600",
     },
+    // Buton login
     loginButton: {
-        backgroundColor: COLORS.mainblue,
-        borderRadius: 12,
-        padding: 16,
-        alignItems: "center",
+        borderRadius: 14,
+        overflow: "hidden",
         marginBottom: 20,
         shadowColor: COLORS.mainblue,
-        shadowOffset: {
-            width: 0,
-            height: 4,
-        },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
         elevation: 8,
+    },
+    loginButtonDisabled: {
+        opacity: 0.7,
+    },
+    loginButtonGradient: {
+        paddingVertical: 16,
+        alignItems: "center",
+        borderRadius: 14,
     },
     loginButtonText: {
         color: "#fff",
         fontSize: 16,
         fontWeight: "bold",
+        letterSpacing: 0.5,
     },
+    // Divider
+    dividerRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 20,
+    },
+    dividerLine: {
+        flex: 1,
+        height: 1,
+        backgroundColor: "#EBEBEB",
+    },
+    dividerText: {
+        color: "#bbb",
+        fontSize: 13,
+        marginHorizontal: 12,
+    },
+    // Signup
     signupContainer: {
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
     },
     signupText: {
-        color: "#666",
+        color: "#888",
         fontSize: 14,
     },
     signupLink: {
-        color: COLORS.mainblue,
+        color: COLORS.orange,
         fontSize: 14,
-        fontWeight: "600",
-    },
-    inputErrorBorder: {
-        borderColor: "#ff4444",
-        borderWidth: 1.5,
-    },
-    errorText: {
-        color: "#ff4444",
-        fontSize: 12,
-        marginTop: 4,
-        alignSelf: 'flex-start'
-    },
-    errorBox: {
-        backgroundColor: "#ffebee",
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 20,
-        borderLeftWidth: 4,
-        borderColor: "#ff4444"
-    },
-    generalErrorText: {
-        color: "#c62828",
-        fontSize: 14,
-        fontWeight: "500",
+        fontWeight: "700",
     },
 });

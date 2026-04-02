@@ -14,3 +14,11 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # Clasa de bază pe care o vom folosi pentru a crea tabelele
 Base = declarative_base()
+
+# Funcție esențială: Deschide și închide conexiunea cu baza de date pentru fiecare cerere
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

@@ -7,6 +7,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import Login from "./src/pages/Login"
 import Register from "./src/pages/Register"
 import HomePage from "./src/pages/HomePage";
+import Chat from "./src/pages/Chat";
+import LibraryPage from "./src/pages/LibraryPage";
 import { AuthProvider } from "./src/components/AuthContext";
 import s from "./styles"
 
@@ -37,11 +39,15 @@ export default function App() {
                         screenOptions={{
                             headerShown: false,
                             animation: "slide_from_right",
+                            contentStyle: { backgroundColor: COLORS.background, flex: 1 },
+                           
                         }}
                     >
                         <Stack.Screen name="Login" component={Login} />
                         <Stack.Screen name="Register" component={Register} />
                         <Stack.Screen name="HomePage" component={HomePage} />
+                        <Stack.Screen name="LibraryPage" component={LibraryPage} />
+                        <Stack.Screen name="Chat" component={Chat} />
                     </Stack.Navigator>
                 </NavigationContainer>
             </View>

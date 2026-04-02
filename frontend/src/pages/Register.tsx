@@ -2,33 +2,32 @@ import React, { useState } from "react";
 import {
     View,
     Text,
-    TextInput,
     TouchableOpacity,
     StyleSheet,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
     Alert,
-    ActivityIndicator
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../constants/theme";
 import s from "../../styles";
+import CustomInput from "../components/CustomInput";
 
 interface ValidationErrors {
     username?: string;
     email?: string;
     phone?: string;
     password?: string;
-    general?: string; // Pentru erorile de la server
+    general?: string;
 }
 
 export default function Register({ navigation }: any) {
-    // Stările care corespund cu modelul nostru din baza de date
     const [username, setUsername] = useState("");
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false); // ← nou
 
     const [errors, setErrors] = useState<ValidationErrors>({});
     const [isLoading, setIsLoading] = useState(false);
@@ -37,39 +36,40 @@ export default function Register({ navigation }: any) {
         let isValid = true;
         let newErrors: ValidationErrors = {};
 
-        // Validare Username
         if (!username.trim()) {
-            newErrors.username = 'Numele de utilizator este obligatoriu';
+            newErrors.username = "Numele de utilizator este obligatoriu";
             isValid = false;
         } else if (!/^[a-zA-Z0-9]+([._]?[a-zA-Z0-9]+)*$/.test(username)) {
-            newErrors.username = 'Format invalid (doar litere, cifre, . și _)';
+            newErrors.username = "Format invalid (doar litere, cifre, . și _)";
             isValid = false;
         }
 
-        // Validare Email
         if (!email.trim()) {
-            newErrors.email = 'Email-ul este obligatoriu';
+            newErrors.email = "Email-ul este obligatoriu";
             isValid = false;
         } else if (!/\S+@\S+\.\S+/.test(email)) {
-            newErrors.email = 'Adresa de email este invalidă';
+            newErrors.email = "Adresa de email este invalidă";
             isValid = false;
         }
 
-        // Validare Telefon
         if (!phone.trim()) {
-            newErrors.phone = 'Telefonul este obligatoriu';
+            newErrors.phone = "Telefonul este obligatoriu";
             isValid = false;
         } else if (!/^07\d{8}$/.test(phone)) {
-            newErrors.phone = 'Format invalid (ex: 07xxxxxxxx, 10 cifre)';
+            newErrors.phone = "Format invalid (ex: 07xxxxxxxx, 10 cifre)";
             isValid = false;
         }
 
-        // Validare Parolă
         if (!password) {
-            newErrors.password = 'Parola este obligatorie';
+            newErrors.password = "Parola este obligatorie";
             isValid = false;
-        } else if (!/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{8,}$/.test(password)) {
-            newErrors.password = 'Minim 8 caractere, o majusculă, cifră și caracter special';
+        } else if (
+            !/^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()])[A-Za-z\d!@#$%^&*()]{8,}$/.test(
+                password
+            )
+        ) {
+            newErrors.password =
+                "Minim 8 caractere, o majusculă, cifră și caracter special";
             isValid = false;
         }
 
@@ -77,59 +77,45 @@ export default function Register({ navigation }: any) {
         return isValid;
     };
 
-   const handleRegister = async () => {
-        // Dacă validarea locală eșuează, ne oprim aici
-        if (!validate()) {
-            return;
-        }
+    const handleRegister = async () => {
+        if (!validate()) return;
 
         setIsLoading(true);
-        setErrors({}); // Curățăm erorile vechi înainte de a trimite
+        setErrors({});
 
         try {
-            const API_URL = 'http://192.168.1.132:8000'
+            const API_URL = "http://192.168.1.132:8000";
             const response = await fetch(`${API_URL}/register`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    username: username,
-                    email: email,
-                    phone: phone,
-                    password: password,
-                }),
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, email, phone, password }),
             });
 
             const data = await response.json();
 
             if (response.ok) {
-                    if (Platform.OS === 'web') {
-                        alert("Contul a fost creat cu succes!"); // Alerta nativă a browserului
-                        navigation.navigate("Login"); // Navigăm manual imediat după
-                    }
-                    else {
-                        Alert.alert(
-                        "Succes!",
-                        "Contul a fost creat cu succes.",
-                        [{ text: "OK", onPress: () => navigation.navigate("Login") }]
-                        );
+                if (Platform.OS === "web") {
+                    alert("Contul a fost creat cu succes!");
+                    navigation.navigate("Login");
+                } else {
+                    Alert.alert("Succes!", "Contul a fost creat cu succes.", [
+                        { text: "OK", onPress: () => navigation.navigate("Login") },
+                    ]);
                 }
             } else {
-                // Eroare de la backend (ex: email deja folosit) o punem sub formular
-                setErrors({ general: data.detail || "Înregistrarea a eșuat. Încearcă din nou." });
+                setErrors({
+                    general: data.detail || "Înregistrarea a eșuat. Încearcă din nou.",
+                });
             }
         } catch (error) {
             console.error(error);
-            setErrors({ general: "Eroare de conexiune la server. Verifică dacă backend-ul este pornit." });
+            setErrors({
+                general:
+                    "Eroare de conexiune la server. Verifică dacă backend-ul este pornit.",
+            });
         } finally {
             setIsLoading(false);
         }
-    };
-
-    const handleLoginNavigate = () => {
-        // Navigăm înapoi la ecranul de login
-        navigation.navigate("Login");
     };
 
     return (
@@ -143,89 +129,85 @@ export default function Register({ navigation }: any) {
                     keyboardShouldPersistTaps="handled"
                 >
                     <View style={styles.container}>
+                        {/* Header */}
                         <View style={styles.header}>
                             <Text style={styles.title}>Creare cont</Text>
-                            <Text style={styles.subtitle}>Alătură-te platformei noastre de învățare</Text>
+                            <Text style={styles.subtitle}>
+                                Alătură-te platformei noastre de învățare
+                            </Text>
                         </View>
 
+                        {/* Eroare generală */}
                         {errors.general && (
                             <View style={styles.errorBox}>
                                 <Text style={styles.generalErrorText}>{errors.general}</Text>
                             </View>
                         )}
 
+                        {/* Formular */}
                         <View style={styles.form}>
-                            {/* Câmp Username */}
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Nume utilizator</Text>
-                                <TextInput
-                                    style={[styles.input, errors.username && styles.inputErrorBorder]}
-                                    placeholder="ex: popescu_ion"
-                                    value={username}
-                                    onChangeText={setUsername}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                />
-                                {errors.username && <Text style={styles.errorText}>{errors.username}</Text>}
-                            </View>
 
-                            {/* Câmp Email */}
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Email</Text>
-                                <TextInput
-                                    style={[styles.input, errors.email && styles.inputErrorBorder]}
-                                    placeholder="exemplu@student.ro"
-                                    value={email}
-                                    onChangeText={setEmail}
-                                    keyboardType="email-address"
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                />
-                                {errors.email && <Text style={styles.errorText}>{errors.email}</Text>}
-                            </View>
+                            <CustomInput
+                                placeholder="Nume utilizator"
+                                value={username}
+                                setValue={setUsername}
+                                type="account"
+                            />
+                            {errors.username && (
+                                <Text style={styles.errorText}>{errors.username}</Text>
+                            )}
 
-                            {/* Câmp phone */}
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Telefon</Text>
-                                <TextInput
-                                    style={[styles.input, errors.phone && styles.inputErrorBorder]}
-                                    placeholder="ex: 0712345678"
-                                    value={phone}
-                                    onChangeText={setPhone}
-                                    keyboardType="phone-pad"
-                                />
-                                {errors.phone && <Text style={styles.errorText}>{errors.phone}</Text>}
-                            </View>
+                            <CustomInput
+                                placeholder="Email"
+                                value={email}
+                                setValue={setEmail}
+                                type="email-outline"
+                            />
+                            {errors.email && (
+                                <Text style={styles.errorText}>{errors.email}</Text>
+                            )}
 
-                            {/* Câmp Parolă */}
-                            <View style={styles.inputContainer}>
-                                <Text style={styles.label}>Parolă</Text>
-                                <TextInput
-                                    style={[styles.input, errors.password && styles.inputErrorBorder]}
-                                    placeholder="Introdu parola"
-                                    value={password}
-                                    onChangeText={setPassword}
-                                    secureTextEntry
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                />
-                                {errors.password && <Text style={styles.errorText}>{errors.password}</Text>}
-                            </View>
+                            <CustomInput
+                                placeholder="Telefon"
+                                value={phone}
+                                setValue={setPhone}
+                                type="phone-outline"
+                                isNumeric={true}
+                            />
+                            {errors.phone && (
+                                <Text style={styles.errorText}>{errors.phone}</Text>
+                            )}
+
+                            <CustomInput
+                                placeholder="Parolă"
+                                value={password}
+                                setValue={setPassword}
+                                type="lock-outline"
+                                secureTextEntry={!showPassword}
+                                onToggleShowPassword={() => setShowPassword(!showPassword)}
+                            />
+                            {errors.password && (
+                                <Text style={styles.errorText}>{errors.password}</Text>
+                            )}
 
                             <TouchableOpacity
                                 style={styles.registerButton}
                                 onPress={handleRegister}
                                 activeOpacity={0.8}
+                                disabled={isLoading}
                             >
-                                <Text style={styles.registerButtonText}>Înregistrare</Text>
+                                <Text style={styles.registerButtonText}>
+                                    {isLoading ? "Se procesează..." : "Înregistrare"}
+                                </Text>
                             </TouchableOpacity>
 
                             <View style={styles.loginContainer}>
                                 <Text style={styles.loginText}>Ai deja cont? </Text>
-                                <TouchableOpacity onPress={handleLoginNavigate}>
+                                <TouchableOpacity onPress={() => navigation.navigate("Login")}>
                                     <Text style={styles.loginLink}>Conectează-te</Text>
                                 </TouchableOpacity>
                             </View>
+
                         </View>
                     </View>
                 </ScrollView>
@@ -266,24 +248,6 @@ const styles = StyleSheet.create({
     form: {
         width: "100%",
     },
-    inputContainer: {
-        marginBottom: 16,
-    },
-    label: {
-        fontSize: 14,
-        fontWeight: "600",
-        color: "#333",
-        marginBottom: 8,
-    },
-    input: {
-        backgroundColor: "#fff",
-        borderWidth: 1,
-        borderColor: "#ddd",
-        borderRadius: 12,
-        padding: 16,
-        fontSize: 16,
-        color: "#333",
-    },
     registerButton: {
         backgroundColor: COLORS.mainblue,
         borderRadius: 12,
@@ -292,10 +256,7 @@ const styles = StyleSheet.create({
         marginTop: 10,
         marginBottom: 20,
         shadowColor: COLORS.mainblue,
-        shadowOffset: {
-            width: 0,
-            height: 4,
-        },
+        shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,
         shadowRadius: 8,
         elevation: 8,
@@ -319,15 +280,12 @@ const styles = StyleSheet.create({
         fontSize: 14,
         fontWeight: "600",
     },
-    inputErrorBorder: {
-        borderColor: "#ff4444",
-        borderWidth: 1.5,
-    },
     errorText: {
         color: "#ff4444",
         fontSize: 12,
         marginTop: 4,
-        alignSelf: 'flex-start'
+        marginBottom: 8,
+        alignSelf: "flex-start",
     },
     errorBox: {
         backgroundColor: "#ffebee",
@@ -335,7 +293,7 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         marginBottom: 20,
         borderLeftWidth: 4,
-        borderColor: "#ff4444"
+        borderColor: "#ff4444",
     },
     generalErrorText: {
         color: "#c62828",

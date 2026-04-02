@@ -1,0 +1,111 @@
+import { useState } from "react";
+import * as DocumentPicker from "expo-document-picker";
+import { Alert } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+export function useUpload(onSuccess: (doc: any) => void) {
+    const [uploading, setUploading] = useState(false);
+    const [progress, setProgress] = useState(0);
+
+    const handleUpload = async () => {
+        try {
+            const result = await DocumentPicker.getDocumentAsync({
+                type: [
+                    "application/pdf",
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "text/plain",
+                ],
+                copyToCacheDirectory: true,
+            });
+
+            if (result.canceled) return;
+
+            const asset = result.assets[0];
+
+            if (asset.size && asset.size > 20 * 1024 * 1024) {
+                Alert.alert("Fișier prea mare", "Dimensiunea maximă este 20MB.");
+                return;
+            }
+
+            await uploadFile(asset);
+        } catch (e) {
+            Alert.alert("Eroare", "Nu s-a putut selecta fișierul.");
+        }
+    };
+
+    const uploadFile = async (asset: DocumentPicker.DocumentPickerAsset) => {
+        setUploading(true);
+        setProgress(0);
+
+        const token = await AsyncStorage.getItem("token");
+
+        const formData = new FormData();
+        formData.append("file", {
+            uri: asset.uri,
+            name: asset.name,
+            type: asset.mimeType ?? "application/octet-stream",
+        } as any);
+        formData.append("folder", "General");
+
+        return new Promise<void>((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+
+            xhr.upload.addEventListener("progress", (e) => {
+                if (e.lengthComputable) {
+                    setProgress(Math.round((e.loaded / e.total) * 100));
+                }
+            });
+
+            xhr.addEventListener("load", () => {
+                setUploading(false);
+                if (xhr.status === 200 || xhr.status === 201) {
+                    const raw = JSON.parse(xhr.responseText);
+                    // Mapează răspunsul backend → structura așteptată de DocCard
+                    const doc = {
+                        doc_id:      raw.doc_id,
+                        nume_fisier: raw.nume_fisier,
+                        folder:      raw.folder,
+                        tip_fisier:  raw.tip_fisier,
+                    };
+                    onSuccess(doc);
+                    Alert.alert("✅ Succes", `„${asset.name}" a fost procesat cu succes!`);
+                    resolve();
+                } else {
+                    // FastAPI 422 pune erorile în detail — array de obiecte sau string
+                    let mesaj = "Upload eșuat.";
+                    try {
+                        const body = JSON.parse(xhr.responseText);
+                        if (Array.isArray(body.detail)) {
+                            mesaj = body.detail
+                                .map((e: any) => `${e.loc?.join(".")} — ${e.msg}`)
+                                .join("\n");
+                        } else {
+                            mesaj = body.detail ?? mesaj;
+                        }
+                    } catch {}
+                    Alert.alert(`Eroare ${xhr.status}`, mesaj);
+                    reject();
+                }
+            });
+
+            xhr.addEventListener("error", () => {
+                setUploading(false);
+                Alert.alert("Eroare", "Eroare de rețea. Verifică conexiunea.");
+                reject();
+            });
+
+            xhr.open("POST", `${API_URL}/upload-curs`);
+            // NU seta Content-Type manual — XHR îl generează automat
+            // cu boundary-ul corect pentru multipart/form-data.
+            // Dacă îl setezi manual fără boundary → FastAPI nu poate parsa → 422
+            if (token) {
+                xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+            }
+            xhr.send(formData);
+        });
+    };
+
+    return { handleUpload, uploading, progress };
+}

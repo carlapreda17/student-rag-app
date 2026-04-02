@@ -1,14 +1,17 @@
 const COLORS = {
-    background: "#f0f4ff",
+    background: "#ffffff",
     yellow: "#FFD369",
-    mainblue: "#22409a",
+    orange: "#ff751f",
+    lightOrange: "#FFB380",
+    mainblue: "#0046FF",
     lightYellow: "#f5dfa9",
     darkGrey: "#393E46",
     gray: "#83829A",
-    lightGray: "#e8e8e8",
+    lightGray: "#f7f7f7",
     white:'#EEEEEE',
     red:'#ff0303',
     darkRed:'#B31312',
+    brightRed:'#ff4444',
     green:'#68B984',
 };
 

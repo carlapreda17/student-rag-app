@@ -10,7 +10,7 @@ interface User {
 interface AuthContextType {
     user: User | null;
     isLoading: boolean;
-    login: (userData: User) => Promise<void>;
+    login: (userData: User, token: string) => Promise<void>;
     logout: () => Promise<void>;
 }
 
@@ -41,15 +41,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, []);
 
     // Funcția care se apelează din pagina de Login
-    const login = async (userData: User) => {
+    const login = async (userData: User, token: string) => {
         setUser(userData); // Setăm în memoria rapidă (stare)
         await AsyncStorage.setItem('userData', JSON.stringify(userData)); // Salvăm în memorie persistentă
+        await AsyncStorage.setItem('token', token); // Salvăm token-ul pentru autentificare ulterioară
     };
 
     // Funcția pentru butonul de Delogare
     const logout = async () => {
         setUser(null);
         await AsyncStorage.removeItem('userData');
+        await AsyncStorage.removeItem('token');
     };
 
     return (
