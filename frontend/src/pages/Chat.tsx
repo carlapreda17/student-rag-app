@@ -5,7 +5,6 @@ import {
   StyleSheet,
   TextInput,
   TouchableOpacity,
-  TouchableWithoutFeedback,
   FlatList,
   ScrollView,
   KeyboardAvoidingView,
@@ -14,6 +13,7 @@ import {
   ActivityIndicator,
   Animated,
   Dimensions,
+  Pressable,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -61,13 +61,13 @@ export default function Chat({ route, navigation }: any) {
   const inputRef = useRef<TextInput>(null);
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
-  // ── Keyboard listeners — also close doc picker ──
+  // ── Keyboard listeners ──
   useEffect(() => {
     const showSub = Keyboard.addListener(
       Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow",
       () => {
         setKeyboardVisible(true);
-        setShowDocPicker(false); // Închide picker-ul când apare tastatura
+        setShowDocPicker(false);
       }
     );
     const hideSub = Keyboard.addListener(
@@ -216,11 +216,13 @@ export default function Chat({ route, navigation }: any) {
   // ─── Render ────────────────────────────────────────────────
   return (
     <ScreenWrapper>
-      {/* Setăm zIndex aici ca dropdown-ul să poată pluti peste restul ecranului */}
-      <View style={{ flex: 1, backgroundColor: "#f8f7ff", zIndex: 1 }}>
-        
-        {/* Container special pentru Header + Dropdown ca să aibă z-index prioritar */}
-        <View style={{ zIndex: 10, elevation: 10 }}>
+      <KeyboardAvoidingView
+        style={{ flex: 1, backgroundColor: "#f8f7ff" }}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0} // Decalaj redus si optimizat pentru iOS
+      >
+        {/* Container pentru Header + Dropdown cu zIndex puternic */}
+        <View style={{ zIndex: 10, elevation: 10, position: "relative" }}>
           {/* ── Header ── */}
           <View style={styles.header}>
             <TouchableOpacity
@@ -265,7 +267,7 @@ export default function Chat({ route, navigation }: any) {
             </View>
           </View>
 
-          {/* ── Document picker dropdown (Acum plutește deasupra) ── */}
+          {/* ── Document Picker (Plutește perfect deasupra, raportat la View-ul părinte) ── */}
           {showDocPicker && (
             <View style={styles.docPicker}>
               <ScrollView style={{ maxHeight: 250 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
@@ -330,89 +332,86 @@ export default function Chat({ route, navigation }: any) {
           )}
         </View>
 
-        {/* ── Main content area with keyboard handling ── */}
-        <KeyboardAvoidingView
-            style={{ flex: 1 }}
-            behavior="padding"
-            keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
-        >
-          <TouchableWithoutFeedback onPress={() => { Keyboard.dismiss(); setShowDocPicker(false); }}>
-            <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
-              {messages.length === 0 ? (
-                <EmptyChat
-                    selectedDocNames={selectedDocNames}
-                    onSuggestion={handleSuggestion}
-                    keyboardVisible={keyboardVisible}
-                    suggestions={sugestii}
-                    loading={loadingSugestii}
-                />
+        {/* ── Zona principală de Chat (Fără TouchableWithoutFeedback care strica flexbox-ul) ── */}
+        <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+          {messages.length === 0 ? (
+            <EmptyChat
+              selectedDocNames={selectedDocNames}
+              onSuggestion={handleSuggestion}
+              keyboardVisible={keyboardVisible}
+              suggestions={sugestii}
+              loading={loadingSugestii}
+              closeMenus={() => {
+                Keyboard.dismiss();
+                setShowDocPicker(false);
+              }}
+            />
+          ) : (
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(item) => item.id}
+              contentContainerStyle={styles.messageList}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              keyboardDismissMode="on-drag" // Ascunde automat tastatura la scroll
+              renderItem={({ item }) => <ChatBubble message={item} />}
+              onContentSizeChange={() =>
+                flatListRef.current?.scrollToEnd({ animated: true })
+              }
+              ListFooterComponent={
+                loading ? (
+                  <View style={styles.typingRow}>
+                    <View style={styles.assistantAvatarSmall}>
+                      <Ionicons name="sparkles" size={12} color="#fff" />
+                    </View>
+                    <View style={styles.typingBubble}>
+                      <TypingDots />
+                      <Text style={styles.typingText}>Se generează...</Text>
+                    </View>
+                  </View>
+                ) : null
+              }
+            />
+          )}
+        </Animated.View>
+
+        {/* ── Input bar ── */}
+        <View style={styles.inputBar}>
+          <View style={styles.inputRow}>
+            <TextInput
+              ref={inputRef}
+              style={styles.textInput}
+              placeholder="Pune o întrebare..."
+              placeholderTextColor="#9ca3af"
+              value={input}
+              onChangeText={setInput}
+              multiline
+              maxLength={2000}
+              editable={!loading}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              style={[
+                styles.sendBtn,
+                (!input.trim() || loading) && styles.sendBtnDisabled,
+              ]}
+              onPress={handleSend}
+              disabled={!input.trim() || loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
               ) : (
-                <FlatList
-                  ref={flatListRef}
-                  data={messages}
-                  keyExtractor={(item) => item.id}
-                  contentContainerStyle={styles.messageList}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  renderItem={({ item }) => <ChatBubble message={item} />}
-                  onContentSizeChange={() =>
-                    flatListRef.current?.scrollToEnd({ animated: true })
-                  }
-                  ListFooterComponent={
-                    loading ? (
-                      <View style={styles.typingRow}>
-                        <View style={styles.assistantAvatarSmall}>
-                          <Ionicons name="sparkles" size={12} color="#fff" />
-                        </View>
-                        <View style={styles.typingBubble}>
-                          <TypingDots />
-                          <Text style={styles.typingText}>Se generează...</Text>
-                        </View>
-                      </View>
-                    ) : null
-                  }
+                <Ionicons
+                  name="send"
+                  size={18}
+                  color={!input.trim() ? "rgba(255,255,255,0.4)" : "#fff"}
                 />
               )}
-            </Animated.View>
-          </TouchableWithoutFeedback>
-
-          {/* ── Input bar ── */}
-          <View style={styles.inputBar}>
-            <View style={styles.inputRow}>
-              <TextInput
-                ref={inputRef}
-                style={styles.textInput}
-                placeholder="Pune o întrebare..."
-                placeholderTextColor="#9ca3af"
-                value={input}
-                onChangeText={setInput}
-                multiline
-                maxLength={2000}
-                editable={!loading}
-                blurOnSubmit={false}
-              />
-              <TouchableOpacity
-                style={[
-                  styles.sendBtn,
-                  (!input.trim() || loading) && styles.sendBtnDisabled,
-                ]}
-                onPress={handleSend}
-                disabled={!input.trim() || loading}
-              >
-                {loading ? (
-                  <ActivityIndicator size="small" color="#fff" />
-                ) : (
-                  <Ionicons
-                    name="send"
-                    size={18}
-                    color={!input.trim() ? "rgba(255,255,255,0.4)" : "#fff"}
-                  />
-                )}
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
-        </KeyboardAvoidingView>
-      </View>
+        </View>
+      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 }
@@ -480,67 +479,74 @@ function EmptyChat({
   keyboardVisible,
   suggestions,
   loading,
+  closeMenus
 }: {
   selectedDocNames: string[];
   onSuggestion: (text: string) => void;
   keyboardVisible: boolean;
   suggestions: string[];
   loading: boolean;
+  closeMenus: () => void;
 }) {
   return (
-    <View style={styles.emptyChat}>
-      {!keyboardVisible && (
-        <View style={{ alignItems: 'center', marginBottom: 20 }}>
-          <View style={styles.emptyChatIconWrap}>
-            <View style={styles.emptyChatIconOuter}>
-              <View style={styles.emptyChatIconInner}>
-                <Ionicons name="chatbubbles" size={32} color={COLORS.mainblue} />
+    <ScrollView 
+      contentContainerStyle={styles.emptyChatScroll} 
+      showsVerticalScrollIndicator={false} 
+      keyboardShouldPersistTaps="handled"
+    >
+      <Pressable style={styles.emptyChatPressable} onPress={closeMenus}>
+        {!keyboardVisible && (
+          <View style={{ alignItems: 'center', marginBottom: 20 }}>
+            <View style={styles.emptyChatIconWrap}>
+              <View style={styles.emptyChatIconOuter}>
+                <View style={styles.emptyChatIconInner}>
+                  <Ionicons name="chatbubbles" size={32} color={COLORS.mainblue} />
+                </View>
+              </View>
+              <View style={[styles.miniBadge, { top: 2, right: 8, backgroundColor: COLORS.orange }]}>
+                <Ionicons name="sparkles" size={10} color="#fff" />
+              </View>
+              <View style={[styles.miniBadge, { bottom: 4, left: 6, backgroundColor: COLORS.mainblue }]}>
+                <Ionicons name="book" size={10} color="#fff" />
               </View>
             </View>
-            <View style={[styles.miniBadge, { top: 2, right: 8, backgroundColor: COLORS.orange }]}>
-              <Ionicons name="sparkles" size={10} color="#fff" />
-            </View>
-            <View style={[styles.miniBadge, { bottom: 4, left: 6, backgroundColor: COLORS.mainblue }]}>
-              <Ionicons name="book" size={10} color="#fff" />
-            </View>
-          </View>
-          <Text style={styles.emptyChatTitle}>Începe o conversație</Text>
-          <Text style={styles.emptyChatSubtitle}>
-            {selectedDocNames.length > 0
-              ? `Pune întrebări despre: ${selectedDocNames.join(", ")}`
-              : "Pune întrebări din documentele tale și primești răspunsuri bazate pe conținutul lor."}
-          </Text>
-        </View>
-      )}
-
-      {/* Am pus sugestiile într-un ScrollView ca să nu se reverse peste ecran când se deschide tastatura */}
-      <ScrollView contentContainerStyle={styles.suggestionsWrap} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        {!keyboardVisible && (
-          <Text style={styles.suggestionsLabel}>Sugestii:</Text>
-        )}
-        {loading ? (
-          <View style={styles.suggestionsLoading}>
-            <ActivityIndicator size="small" color={COLORS.orange} />
-            <Text style={{ fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>
-              Se generează sugestii...
+            <Text style={styles.emptyChatTitle}>Începe o conversație</Text>
+            <Text style={styles.emptyChatSubtitle}>
+              {selectedDocNames.length > 0
+                ? `Pune întrebări despre: ${selectedDocNames.join(", ")}`
+                : "Pune întrebări din documentele tale și primești răspunsuri bazate pe conținutul lor."}
             </Text>
           </View>
-        ) : (
-          suggestions.map((s) => (
-            <TouchableOpacity
-              key={s}
-              style={styles.suggestionChip}
-              onPress={() => onSuggestion(s)}
-              activeOpacity={0.7}
-            >
-              <Ionicons name="bulb-outline" size={14} color={COLORS.orange} />
-              <Text style={styles.suggestionText}>{s}</Text>
-              <Ionicons name="arrow-forward" size={12} color="#c7d2fe" style={{ marginLeft: "auto" }} />
-            </TouchableOpacity>
-          ))
         )}
-      </ScrollView>
-    </View>
+
+        <View style={styles.suggestionsWrap}>
+          {!keyboardVisible && (
+            <Text style={styles.suggestionsLabel}>Sugestii:</Text>
+          )}
+          {loading ? (
+            <View style={styles.suggestionsLoading}>
+              <ActivityIndicator size="small" color={COLORS.orange} />
+              <Text style={{ fontSize: 12, color: "#9ca3af", marginLeft: 8 }}>
+                Se generează sugestii...
+              </Text>
+            </View>
+          ) : (
+            suggestions.map((s) => (
+              <TouchableOpacity
+                key={s}
+                style={styles.suggestionChip}
+                onPress={() => onSuggestion(s)}
+                activeOpacity={0.7}
+              >
+                <Ionicons name="bulb-outline" size={14} color={COLORS.orange} />
+                <Text style={styles.suggestionText}>{s}</Text>
+                <Ionicons name="arrow-forward" size={12} color="#c7d2fe" style={{ marginLeft: "auto" }} />
+              </TouchableOpacity>
+            ))
+          )}
+        </View>
+      </Pressable>
+    </ScrollView>
   );
 }
 
@@ -629,19 +635,10 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
 
-  /* ── Doc Picker (absolut, overlay) ── */
-  docPickerOverlay: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(0,0,0,0.25)",
-    zIndex: 30,
-  },
+  /* ── Doc Picker ── */
   docPicker: {
     position: "absolute",
-    top: 62, // sub header
+    top: "100%", // Asigură că pleacă fix de sub baza header-ului
     left: 0,
     right: 0,
     backgroundColor: "#fff",
@@ -788,14 +785,15 @@ const styles = StyleSheet.create({
     textAlign: "right",
   },
 
-  /* ── Empty Chat ── */
+  /* ── Empty Chat (Scrollable acum) ── */
   emptyChatScroll: {
     flexGrow: 1,
-    justifyContent: "center",
-    paddingBottom: 16,
   },
-  emptyChat: {
+  emptyChatPressable: {
+    flex: 1,
+    justifyContent: "center",
     paddingHorizontal: 28,
+    paddingVertical: 40,
   },
   emptyChatIconWrap: {
     width: 110,
@@ -928,7 +926,7 @@ const styles = StyleSheet.create({
   inputBar: {
     paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 8 : 10,
+    paddingBottom: Platform.OS === "ios" ? 16 : 10, // Un extra padding pentru iOS la marginea de jos
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#ece9ff",

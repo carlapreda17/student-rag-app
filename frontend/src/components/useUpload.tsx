@@ -9,12 +9,14 @@ export function useUpload(onSuccess: (doc: any) => void) {
     const [uploading, setUploading] = useState(false);
     const [progress, setProgress] = useState(0);
 
-    const handleUpload = async () => {
+    const pickFile = async () => {
         try {
             const result = await DocumentPicker.getDocumentAsync({
                 type: [
                     "application/pdf",
                     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    "application/vnd.ms-powerpoint", // .ppt
+                    "application/vnd.openxmlformats-officedocument.presentationml.presentation", // .pptx
                     "text/plain",
                 ],
                 copyToCacheDirectory: true,
@@ -29,13 +31,13 @@ export function useUpload(onSuccess: (doc: any) => void) {
                 return;
             }
 
-            await uploadFile(asset);
+            return asset;
         } catch (e) {
             Alert.alert("Eroare", "Nu s-a putut selecta fișierul.");
         }
     };
 
-    const uploadFile = async (asset: DocumentPicker.DocumentPickerAsset) => {
+    const uploadFile = async (asset: DocumentPicker.DocumentPickerAsset, folder: string) => {
         setUploading(true);
         setProgress(0);
 
@@ -47,7 +49,7 @@ export function useUpload(onSuccess: (doc: any) => void) {
             name: asset.name,
             type: asset.mimeType ?? "application/octet-stream",
         } as any);
-        formData.append("folder", "General");
+        formData.append("folder", folder);
 
         return new Promise<void>((resolve, reject) => {
             const xhr = new XMLHttpRequest();
@@ -62,25 +64,21 @@ export function useUpload(onSuccess: (doc: any) => void) {
                 setUploading(false);
                 if (xhr.status === 200 || xhr.status === 201) {
                     const raw = JSON.parse(xhr.responseText);
-                    // Mapează răspunsul backend → structura așteptată de DocCard
                     const doc = {
                         doc_id:      raw.doc_id,
                         nume_fisier: raw.nume_fisier,
                         folder:      raw.folder,
                         tip_fisier:  raw.tip_fisier,
                     };
-                    onSuccess(doc);
-                    Alert.alert("✅ Succes", `„${asset.name}" a fost procesat cu succes!`);
+                    onSuccess(doc); // Aici vom închide și modalul din HomePage
+                    Alert.alert("✅ Succes", `„${asset.name}" a fost salvat în „${folder}"!`);
                     resolve();
                 } else {
-                    // FastAPI 422 pune erorile în detail — array de obiecte sau string
                     let mesaj = "Upload eșuat.";
                     try {
                         const body = JSON.parse(xhr.responseText);
                         if (Array.isArray(body.detail)) {
-                            mesaj = body.detail
-                                .map((e: any) => `${e.loc?.join(".")} — ${e.msg}`)
-                                .join("\n");
+                            mesaj = body.detail.map((e: any) => `${e.loc?.join(".")} — ${e.msg}`).join("\n");
                         } else {
                             mesaj = body.detail ?? mesaj;
                         }
@@ -97,9 +95,6 @@ export function useUpload(onSuccess: (doc: any) => void) {
             });
 
             xhr.open("POST", `${API_URL}/upload-curs`);
-            // NU seta Content-Type manual — XHR îl generează automat
-            // cu boundary-ul corect pentru multipart/form-data.
-            // Dacă îl setezi manual fără boundary → FastAPI nu poate parsa → 422
             if (token) {
                 xhr.setRequestHeader("Authorization", `Bearer ${token}`);
             }
@@ -107,5 +102,5 @@ export function useUpload(onSuccess: (doc: any) => void) {
         });
     };
 
-    return { handleUpload, uploading, progress };
+    return { pickFile, uploadFile, uploading, progress };
 }

@@ -11,6 +11,7 @@ import {
 import { useUpload } from "../components/useUpload";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
+import UploadModal from "../components/UploadModal";
 import { useAuth } from "../components/AuthContext";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { COLORS } from "../../constants/theme";
@@ -35,7 +36,7 @@ export default function HomePage({ navigation }: any) {
     const { user, logout } = useAuth();
     const [documente, setDocumente] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
-
+    const [fileToUpload, setFileToUpload] = useState<any>(null);
     // Mock stats — înlocuiește cu date reale din API
     const stats = [documente.length, 12, "78%"];
     const previewDocumente = documente.slice(0, 3);
@@ -66,9 +67,23 @@ export default function HomePage({ navigation }: any) {
         navigation.navigate("Login");
     };
 
-   const { handleUpload, uploading, progress } = useUpload((newDoc) => {
+   const { pickFile, uploadFile, uploading, progress } = useUpload((newDoc) => {
         setDocumente((prev) => [newDoc, ...prev]);
+        setFileToUpload(null); // Închidem modalul automat la succes
     });
+
+    const handleInitiateUpload = async () => {
+        const asset = await pickFile(); // Deschide sistemul nativ
+        if (asset) {
+            setFileToUpload(asset); // Dacă a ales un fișier, deschide modalul
+        }
+    };
+
+    const handleConfirmUpload = async (folder: string) => {
+        if (fileToUpload) {
+            await uploadFile(fileToUpload, folder); // Trimite la backend
+        }
+    };
 
     return (
         <ScreenWrapper>
@@ -151,7 +166,7 @@ export default function HomePage({ navigation }: any) {
                                 </View>
 
                                 {previewDocumente.length === 0 ? (
-                                    <EmptyState onUpload={handleUpload} uploading={uploading} progress={progress} />
+                                    <EmptyState onUpload={handleInitiateUpload} uploading={uploading} progress={progress} />
                                 ) : (
                                     <View style={{ gap: 10 }}>
                                         {previewDocumente.map((doc) => (
@@ -159,10 +174,10 @@ export default function HomePage({ navigation }: any) {
                                         ))}
                                         {/* Buton dashed la final */}
                                         <TouchableOpacity
-                                            style={[styles.dashedBtn, uploading && { opacity: 0.6 }]}
-                                            onPress={handleUpload}
-                                            disabled={uploading}
-                                            activeOpacity={0.8}
+                                             style={[styles.dashedBtn, uploading && { opacity: 0.6 }]}
+                                             onPress={handleInitiateUpload}
+                                             disabled={uploading}
+                                             activeOpacity={0.8}
                                         >
                                             <Ionicons name="add-circle-outline" size={20} color={COLORS.mainblue} />
                                             <Text style={styles.dashedBtnText}>Adaugă document nou</Text>
@@ -173,6 +188,12 @@ export default function HomePage({ navigation }: any) {
                         </>
                     )}
                 </ScrollView>
+            <UploadModal
+                visible={!!fileToUpload}
+                onClose={() => setFileToUpload(null)}
+                onConfirm={handleConfirmUpload}
+                uploading={uploading}
+            />
             </View>
         </ScreenWrapper>
     );
@@ -181,10 +202,18 @@ export default function HomePage({ navigation }: any) {
 /* ── Doc Card ── */
 function DocCard({ doc, navigation }: { doc: any; navigation: any }) {
     const ext = doc.tip_fisier?.toUpperCase() ?? "PDF";
-    const iconColor =
-        ext === "PDF" ? COLORS.orange : ext === "DOCX" ? COLORS.mainblue : "#6b7280";
-    const iconBg =
-        ext === "PDF" ? "#fee2e2" : ext === "DOCX" ? "#dbeafe" : "#f3f4f6";
+    let iconColor = "#6b7280";
+    let iconBg = "#f3f4f6";
+    if (ext === "PDF") {
+        iconColor = COLORS.orange;
+        iconBg = "#fee2e2";
+    } else if (ext === "DOCX") {
+        iconColor = COLORS.mainblue;
+        iconBg = "#dbeafe";
+    } else if (ext === "PPT" || ext === "PPTX") {
+        iconColor = "#a259d9"; // mov
+        iconBg = "#ede9fe"; // mov deschis
+    }
 
     return (
         <View style={styles.docCard}>

@@ -9,6 +9,8 @@ import Register from "./src/pages/Register"
 import HomePage from "./src/pages/HomePage";
 import Chat from "./src/pages/Chat";
 import LibraryPage from "./src/pages/LibraryPage";
+import Test from "./src/pages/Test";
+import TakeTest from "./src/pages/TakeTest";
 import { AuthProvider } from "./src/components/AuthContext";
 import s from "./styles"
 
@@ -48,6 +50,8 @@ export default function App() {
                         <Stack.Screen name="HomePage" component={HomePage} />
                         <Stack.Screen name="LibraryPage" component={LibraryPage} />
                         <Stack.Screen name="Chat" component={Chat} />
+                        <Stack.Screen name="Test" component={Test} />
+                        <Stack.Screen name="TakeTest" component={TakeTest} />
                     </Stack.Navigator>
                 </NavigationContainer>
             </View>
