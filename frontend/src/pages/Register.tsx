@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../constants/theme";
 import s from "../../styles";
-import CustomInput from "../components/CustomInput";
+import CustomInput from "../components/CustomInput"
+const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 interface ValidationErrors {
     username?: string;
@@ -84,7 +85,7 @@ export default function Register({ navigation }: any) {
         setErrors({});
 
         try {
-            const API_URL = "http://192.168.1.132:8000";
+            
             const response = await fetch(`${API_URL}/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },

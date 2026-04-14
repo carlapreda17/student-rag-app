@@ -4,6 +4,7 @@ import io
 import pdfplumber
 from docx import Document as DocxDocument
 from fastapi import UploadFile, File, Form, HTTPException
+from pptx import Presentation
 from dotenv import load_dotenv
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
@@ -40,10 +41,11 @@ text_splitter = RecursiveCharacterTextSplitter(
 )
 
 # ── Tipuri acceptate ─────────────────────────────────────
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt", ".pptx"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "text/plain",
 }
 
@@ -61,12 +63,12 @@ def validate_file(filename: str, content_type: str) -> None:
     if ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Format nesuportat: {ext}. Acceptăm PDF, DOCX și TXT.",
+            detail=f"Format nesuportat: {ext}. Acceptăm PDF, DOCX, PPTX și TXT.",
         )
 
 
 async def extract_text(file: UploadFile) -> str:
-    """Extrage textul din PDF, DOCX sau TXT."""
+    """Extrage textul din PDF, DOCX, PPTX sau TXT."""
     content = await file.read()
     ext = get_file_extension(file.filename)
 
@@ -75,6 +77,8 @@ async def extract_text(file: UploadFile) -> str:
             return _extract_pdf(content)
         elif ext == ".docx":
             return _extract_docx(content)
+        elif ext == ".pptx":
+            return _extract_pptx(content)
         elif ext == ".txt":
             return _extract_txt(content)
     except HTTPException:
@@ -84,6 +88,15 @@ async def extract_text(file: UploadFile) -> str:
             status_code=500,
             detail=f"Eroare la procesarea fișierului: {str(e)}",
         )
+def _extract_pptx(content: bytes) -> str:
+    """Extrage textul dintr-un fișier PPTX (PowerPoint)."""
+    prs = Presentation(io.BytesIO(content))
+    paragraphs = []
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text") and shape.text.strip():
+                paragraphs.append(shape.text.strip())
+    return "\n".join(paragraphs)
 
 
 def _extract_pdf(content: bytes) -> str:

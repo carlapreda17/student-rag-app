@@ -90,7 +90,17 @@ export default function TakeTest({ route, navigation }: any) {
           doc_id: docID,
           difficulty: difficulty,
           num_questions: questions.length,
-          score: scorePercentage, // Scorul este deja calculat matematic mai sus în codul tău
+          score: scorePercentage,
+          questions: questions.map((q, idx) => ({
+            question_index: idx,
+            question_text: q.question,
+            correct_answer: q.correct,
+            user_answer: selectedAnswers[q.id] ?? null,
+            is_correct: selectedAnswers[q.id] != null
+              ? selectedAnswers[q.id] === q.correct
+              : null,
+            explanation: q.explanation,
+          })),
         }),
       });
       console.log("Salvat în BD cu succes!");

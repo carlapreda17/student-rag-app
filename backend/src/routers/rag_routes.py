@@ -1,5 +1,6 @@
 import os
 import uuid
+import time
 from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
 from dotenv import load_dotenv
 from qdrant_client import QdrantClient
@@ -7,9 +8,14 @@ from qdrant_client.http import models
 from src.services.ingestion import validate_file, extract_text, text_splitter, embeddings_model, qdrant, COLLECTION_NAME, get_file_extension
 from openai import OpenAI
 from pydantic import BaseModel
-from src.services.retrieval import embed_intrebare,construieste_filtru,cauta_chunks,construieste_context,genereaza_raspuns
+from src.services.retrieval import embed_intrebare,construieste_filtru,cauta_chunks,construieste_context,genereaza_raspuns, rerankeaza_chunks
 from src.routers.auth_routes import get_current_user
+from database.database import get_db
+from database.models.question import ChatInteraction
+from sqlalchemy.orm import Session
 
+CANDIDATE_K = 10
+FINAL_K = 4
 
 load_dotenv()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -26,7 +32,7 @@ class SuggestiiRequest(BaseModel):
 
 
 @router.post("/chat")
-async def chat(req: ChatRequest, user=Depends(get_current_user)):
+async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
     user_id = user["id"]
 
     if not req.intrebare.strip():
@@ -47,132 +53,36 @@ async def chat(req: ChatRequest, user=Depends(get_current_user)):
             "raspuns": "Nu am găsit informații relevante în documentele selectate. Încearcă să reformulezi întrebarea.",
             "surse": [],
         }
-    # 4. Construiește contextul
-    context, surse = construieste_context(puncte)
-    
-    # 5. Generează răspunsul GPT
+
+    # 4. Reranking
+    puncte = rerankeaza_chunks(req.intrebare, puncte, top_n=FINAL_K)
+
+    # 5. Construiește contextul
+    context, surse, chunks = construieste_context(puncte)
+
+    # 6. Generează răspunsul GPT
+    start = time.time()
     try:
         raspuns, tokens = genereaza_raspuns(req.intrebare, context)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Eroare GPT: {str(e)}")
+    latency_ms = int((time.time() - start) * 1000)
+
+    # 7. Salvează interacțiunea în DB (chunks cu text pentru evaluare RAG)
+    db.add(ChatInteraction(
+        interaction_id=str(uuid.uuid4()),
+        question=req.intrebare,
+        answer=raspuns,
+        contexts=chunks,
+        model_used="gpt-4o-mini",
+        latency_ms=latency_ms,
+    ))
+    db.commit()
+
     return {
         "raspuns": raspuns,
         "surse":   surse,
         "tokens": tokens,
-    }
-
-@router.get("/documente")
-async def get_documente(user=Depends(get_current_user)): 
-    user_id = user["id"]
-    print(user_id)
-    results = qdrant.scroll(
-        collection_name=COLLECTION_NAME,
-        scroll_filter=models.Filter(
-            must=[models.FieldCondition(
-                key="user_id",
-                match=models.MatchValue(value=user_id)
-            )]
-        ),
-        limit=100,
-        with_payload=True,
-        with_vectors=False,
-    )
-    
-    # Grupează după doc_id ca să nu repeți același document
-    documente = {}
-    for point in results[0]:
-        doc_id = point.payload["doc_id"]
-        if doc_id not in documente:
-            documente[doc_id] = {
-                "doc_id": doc_id,
-                "nume_fisier": point.payload["nume_fisier"],
-                "folder": point.payload["folder"],
-                "tip_fisier": point.payload["tip_fisier"],
-            }
-    
-    return {"documente": list(documente.values())}
-
-
-
-@router.post("/upload-curs")
-async def upload_curs(
-    file: UploadFile = File(...),
-    folder: str = Form(default="General"),
-    user = Depends(get_current_user) 
-):
-    user_id = user["id"]  # temporar până legi autentificarea
-
-    print(f"----------------{user}")
-    # 1. Validare
-    validate_file(file.filename, file.content_type)
-
-    # 2. Extragere text
-    text_complet = await extract_text(file)
-
-    if not text_complet.strip():
-        raise HTTPException(
-            status_code=400,
-            detail="Documentul pare gol sau nu conține text selectabil. "
-                   "PDF-urile scanate (imagini) nu sunt suportate momentan.",
-        )
-
-    # 3. Chunking
-    chunks = text_splitter.split_text(text_complet)
-
-    if not chunks:
-        raise HTTPException(
-            status_code=400,
-            detail="Nu s-au putut extrage fragmente de text din document.",
-        )
-
-    # 4. Embeddings
-    try:
-        vectors = embeddings_model.embed_documents(chunks)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Eroare la generarea embeddings: {str(e)}",
-        )
-
-    # 5. Salvare în Qdrant
-    doc_id = str(uuid.uuid4())  # ID comun pentru toate chunk-urile din același fișier
-
-    puncte_qdrant = [
-        models.PointStruct(
-            id=str(uuid.uuid4()),
-            vector=vectors[i],
-            payload={
-                "user_id":     user_id,
-                "doc_id":      doc_id,          # grupare chunk-uri per document
-                "nume_fisier": file.filename,
-                "folder":      folder,
-                "tip_fisier":  get_file_extension(file.filename).lstrip(".").upper(),
-                "chunk_index": i,               # ordinea în document
-                "text":        chunk,
-            },
-        )
-        for i, chunk in enumerate(chunks)
-    ]
-
-    try:
-        qdrant.upsert(
-            collection_name=COLLECTION_NAME,
-            points=puncte_qdrant,
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Eroare la salvarea în baza de date: {str(e)}",
-        )
-
-    return {
-        "mesaj":              "Documentul a fost procesat și salvat cu succes!",
-        "doc_id":             doc_id,
-        "nume_fisier":        file.filename,
-        "folder":             folder,
-        "tip_fisier":         get_file_extension(file.filename).lstrip(".").upper(),
-        "chunk-uri_salvate":  len(chunks),
-        "caractere_total":    len(text_complet),
     }
 
 

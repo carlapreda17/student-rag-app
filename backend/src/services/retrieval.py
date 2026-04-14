@@ -1,9 +1,11 @@
 import os
 from openai import OpenAI
 from qdrant_client.http import models
+from sentence_transformers import CrossEncoder
 from src.services.ingestion import embeddings_model, qdrant, COLLECTION_NAME
 
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+reranker = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2", max_length=512)
 
 PROMPT_SISTEM = """Ești un asistent educațional inteligent care ajută studenții să învețe.
 Răspunde DOAR pe baza fragmentelor din documente furnizate.
@@ -47,15 +49,46 @@ def cauta_chunks(vector: list[float], filtru: models.Filter, top_k: int) -> list
     )
     return rezultate.points
 
+def rerankeaza_chunks(intrebare: str, puncte: list, top_n: int = 4) -> list:
+    """
+    Primește 15 chunk-uri de la Qdrant și le re-rankează cu Cross-Encoder.
+    Returnează doar primele top_n, ordonate după scorul Cross-Encoder.
+    """
+    if not puncte:
+        return []
 
-def construieste_context(puncte: list) -> tuple[str, list[dict]]:
+    # Construim perechile (întrebare, text_chunk) pentru Cross-Encoder
+    texte = [punct.payload.get("text", "") for punct in puncte]
+    perechi = [(intrebare, text) for text in texte]
+
+    # Cross-Encoder scorează fiecare pereche
+    scoruri = reranker.predict(perechi)  # returnează array de float-uri
+
+    # Asociem scorul Cross-Encoder fiecărui punct
+    puncte_cu_scor = list(zip(puncte, scoruri))
+
+    # Sortăm descrescător după scorul Cross-Encoder
+    puncte_cu_scor.sort(key=lambda x: x[1], reverse=True)
+
+    # Luăm primele top_n și injectăm scorul Cross-Encoder în payload pentru transparență
+    rezultate_finale = []
+    for punct, scor_ce in puncte_cu_scor[:top_n]:
+        punct.payload["rerank_score"] = round(float(scor_ce), 4)
+        rezultate_finale.append(punct)
+
+    return rezultate_finale
+
+    
+def construieste_context(puncte: list) -> tuple[str, list[dict], list[dict]]:
     """
     Din lista de puncte Qdrant construiește:
     - context: textul concatenat trimis la GPT
-    - surse: lista fișierelor sursă (fără duplicate)
+    - surse: lista fișierelor sursă (fără duplicate, fără text — pentru frontend)
+    - chunks: lista completă a chunk-urilor cu text — pentru evaluare RAG
     """
     context_parts = []
     surse = []
+    chunks = []
 
     for i, punct in enumerate(puncte):
         text = punct.payload.get("text", "")
@@ -65,6 +98,13 @@ def construieste_context(puncte: list) -> tuple[str, list[dict]]:
 
         context_parts.append(f"[Fragment {i+1} din '{nume_fisier}']:\n{text}")
 
+        chunks.append({
+            "text": text,
+            "nume_fisier": nume_fisier,
+            "folder": folder,
+            "score": score,
+        })
+
         if not any(s["nume_fisier"] == nume_fisier for s in surse):
             surse.append({
                 "nume_fisier": nume_fisier,
@@ -72,7 +112,7 @@ def construieste_context(puncte: list) -> tuple[str, list[dict]]:
                 "score": score,
             })
 
-    return "\n\n---\n\n".join(context_parts), surse
+    return "\n\n---\n\n".join(context_parts), surse, chunks
 
 
 def genereaza_raspuns(intrebare: str, context: str) -> tuple[str, int]:

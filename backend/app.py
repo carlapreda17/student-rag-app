@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from src.routers.auth_routes import router as auth_router
 from src.routers.rag_routes import router as rag_router
+from src.routers.doc_routes import router as doc_router
 
 load_dotenv()  
 ORIGIN = os.getenv("ORIGIN", "*")  
@@ -19,7 +20,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[ORIGIN, "http://localhost:8081"],  # Permite cereri de oriunde (ex: din React Native, browser etc.)
+    allow_origins=[ORIGIN, "http://localhost:8081",  "http://localhost:5173"],  # Permite cereri de oriunde (ex: din React Native, browser etc.)
     allow_credentials=True,
     allow_methods=["*"],  # Permite toate metodele (GET, POST, OPTIONS, etc.)
     allow_headers=["*"],  # Permite toate headerele (cum ar fi 'Content-Type: application/json')
@@ -27,6 +28,7 @@ app.add_middleware(
 
 app.include_router(auth_router)
 app.include_router(rag_router)
+app.include_router(doc_router)
 
 @app.get("/")
 def read_root():

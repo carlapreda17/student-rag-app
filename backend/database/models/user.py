@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String
+from sqlalchemy import Column, Integer, String, Boolean
+from sqlalchemy.sql import expression
 from database.database import Base
 
 class User(Base):
@@ -10,3 +11,4 @@ class User(Base):
     password = Column(String)
     email = Column(String, unique=True, index=True)
     phone = Column(String)
+    is_admin = Column(Boolean, default=False, server_default=expression.false(), nullable=False)
