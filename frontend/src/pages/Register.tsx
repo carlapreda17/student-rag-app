@@ -8,11 +8,14 @@ import {
     Platform,
     ScrollView,
     Alert,
+    Dimensions
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { COLORS } from "../../constants/theme";
-import s from "../../styles";
-import CustomInput from "../components/CustomInput"
+import CustomInput from "../components/CustomInput";
+import { Image } from 'expo-image';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { height } = Dimensions.get("window");
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 interface ValidationErrors {
@@ -28,7 +31,7 @@ export default function Register({ navigation }: any) {
     const [email, setEmail] = useState("");
     const [phone, setPhone] = useState("");
     const [password, setPassword] = useState("");
-    const [showPassword, setShowPassword] = useState(false); // ← nou
+    const [showPassword, setShowPassword] = useState(false);
 
     const [errors, setErrors] = useState<ValidationErrors>({});
     const [isLoading, setIsLoading] = useState(false);
@@ -85,7 +88,6 @@ export default function Register({ navigation }: any) {
         setErrors({});
 
         try {
-            
             const response = await fetch(`${API_URL}/register`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -120,185 +122,222 @@ export default function Register({ navigation }: any) {
     };
 
     return (
-        <SafeAreaView style={styles.safeArea}>
-            <KeyboardAvoidingView
-                behavior={Platform.OS === "ios" ? "padding" : "height"}
-                style={styles.keyboardView}
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === "ios" ? "padding" : "height"}
+        >
+            <LinearGradient
+                colors={["#EEF2FF", "#FFF7ED", "#ffffff"]}
+                style={{ flex: 1 }}
             >
                 <ScrollView
                     contentContainerStyle={styles.scrollContainer}
                     keyboardShouldPersistTaps="handled"
+                    showsVerticalScrollIndicator={false}
                 >
-                    <View style={styles.container}>
-                        {/* Header */}
-                        <View style={styles.header}>
-                            <Text style={styles.title}>Creare cont</Text>
-                            <Text style={styles.subtitle}>
-                                Alătură-te platformei noastre de învățare
-                            </Text>
-                        </View>
+                    {/* Top blob decorativ */}
+                    <View style={styles.topBlob} />
+                    
+                    {/* Logo - un pic mai sus ca la login pentru a face loc formularului mai lung */}
+                    <Image
+                        source={require("../../assets/StuddAIaf.svg")}
+                        style={styles.logo}
+                        contentFit="contain"
+                    />
+
+                    {/* Card principal */}
+                    <View style={styles.card}>
+                        <Text style={styles.title}>Creare cont</Text>
+                        <Text style={styles.subtitle}>
+                            Alătură-te platformei noastre
+                        </Text>
 
                         {/* Eroare generală */}
                         {errors.general && (
                             <View style={styles.errorBox}>
-                                <Text style={styles.generalErrorText}>{errors.general}</Text>
+                                <Text style={styles.errorText}>⚠️ {errors.general}</Text>
                             </View>
                         )}
 
-                        {/* Formular */}
-                        <View style={styles.form}>
+                        <CustomInput
+                            placeholder="Nume utilizator"
+                            value={username}
+                            setValue={setUsername}
+                            type="account"
+                        />
+                        {errors.username && (
+                            <Text style={styles.fieldError}>{errors.username}</Text>
+                        )}
 
-                            <CustomInput
-                                placeholder="Nume utilizator"
-                                value={username}
-                                setValue={setUsername}
-                                type="account"
-                            />
-                            {errors.username && (
-                                <Text style={styles.errorText}>{errors.username}</Text>
-                            )}
+                        <CustomInput
+                            placeholder="Email"
+                            value={email}
+                            setValue={setEmail}
+                            type="email"
+                        />
+                        {errors.email && (
+                            <Text style={styles.fieldError}>{errors.email}</Text>
+                        )}
 
-                            <CustomInput
-                                placeholder="Email"
-                                value={email}
-                                setValue={setEmail}
-                                type="email-outline"
-                            />
-                            {errors.email && (
-                                <Text style={styles.errorText}>{errors.email}</Text>
-                            )}
+                        <CustomInput
+                            placeholder="Telefon"
+                            value={phone}
+                            setValue={setPhone}
+                            type="phone"
+                            isNumeric={true}
+                        />
+                        {errors.phone && (
+                            <Text style={styles.fieldError}>{errors.phone}</Text>
+                        )}
 
-                            <CustomInput
-                                placeholder="Telefon"
-                                value={phone}
-                                setValue={setPhone}
-                                type="phone-outline"
-                                isNumeric={true}
-                            />
-                            {errors.phone && (
-                                <Text style={styles.errorText}>{errors.phone}</Text>
-                            )}
+                        <CustomInput
+                            placeholder="Parolă"
+                            value={password}
+                            setValue={setPassword}
+                            type="lock"
+                            secureTextEntry={!showPassword}
+                            onToggleShowPassword={() => setShowPassword(!showPassword)}
+                        />
+                        {errors.password && (
+                            <Text style={styles.fieldError}>{errors.password}</Text>
+                        )}
 
-                            <CustomInput
-                                placeholder="Parolă"
-                                value={password}
-                                setValue={setPassword}
-                                type="lock-outline"
-                                secureTextEntry={!showPassword}
-                                onToggleShowPassword={() => setShowPassword(!showPassword)}
-                            />
-                            {errors.password && (
-                                <Text style={styles.errorText}>{errors.password}</Text>
-                            )}
-
-                            <TouchableOpacity
-                                style={styles.registerButton}
-                                onPress={handleRegister}
-                                activeOpacity={0.8}
-                                disabled={isLoading}
+                        <TouchableOpacity
+                            style={[styles.registerButton, isLoading && styles.registerButtonDisabled]}
+                            onPress={handleRegister}
+                            activeOpacity={0.85}
+                            disabled={isLoading}
+                        >
+                            <LinearGradient
+                                colors={[COLORS.mainblue, "#3B5FD4"]}
+                                start={{ x: 0, y: 0 }}
+                                end={{ x: 1, y: 0 }}
+                                style={styles.registerButtonGradient}
                             >
                                 <Text style={styles.registerButtonText}>
                                     {isLoading ? "Se procesează..." : "Înregistrare"}
                                 </Text>
+                            </LinearGradient>
+                        </TouchableOpacity>
+
+                        <View style={styles.loginContainer}>
+                            <Text style={styles.loginText}>Ai deja cont? </Text>
+                            <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+                                <Text style={styles.loginLink}>Conectează-te</Text>
                             </TouchableOpacity>
-
-                            <View style={styles.loginContainer}>
-                                <Text style={styles.loginText}>Ai deja cont? </Text>
-                                <TouchableOpacity onPress={() => navigation.navigate("Login")}>
-                                    <Text style={styles.loginLink}>Conectează-te</Text>
-                                </TouchableOpacity>
-                            </View>
-
                         </View>
                     </View>
                 </ScrollView>
-            </KeyboardAvoidingView>
-        </SafeAreaView>
+            </LinearGradient>
+        </KeyboardAvoidingView>
     );
 }
 
 const styles = StyleSheet.create({
-    safeArea: {
-        flex: 1,
-        backgroundColor: "#f5f5f5",
-    },
-    keyboardView: {
-        flex: 1,
-    },
     scrollContainer: {
         flexGrow: 1,
-        justifyContent: "center",
-        padding: 24,
+        alignItems: "center",
+        paddingBottom: 40,
     },
-    container: {
-        width: "100%",
+    // Blob decorativ în spate
+    topBlob: {
+        position: "absolute",
+        top: -80,
+        right: -80,
+        width: 260,
+        height: 260,
+        borderRadius: 130,
+        backgroundColor: COLORS.mainblue,
+        opacity: 0.07,
     },
-    header: {
-        marginBottom: 30,
+    logo: {
+        width: 200, 
+        height: 200,
+        marginTop: height * 0.06, // Puțin mai sus față de login pentru a face loc câmpurilor
+        marginBottom: 10,
+    },
+    // Card
+    card: {
+        width: "90%",
+        backgroundColor: "#fff",
+        borderRadius: 28,
+        padding: 28,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 20,
+        elevation: 8,
     },
     title: {
-        fontSize: 32,
-        fontWeight: "bold",
-        color: "#1a1a1a",
-        marginBottom: 8,
+        fontSize: 26,
+        fontWeight: "800",
+        color: COLORS.orange,
+        marginBottom: 6,
     },
     subtitle: {
-        fontSize: 16,
-        color: "#666",
+        fontSize: 14,
+        color: COLORS.mainblue,
+        marginBottom: 24,
     },
-    form: {
-        width: "100%",
+    // Error general
+    errorBox: {
+        backgroundColor: "#FFF0F0",
+        borderLeftWidth: 4,
+        borderLeftColor: "#FF4D4D",
+        borderRadius: 10,
+        padding: 12,
+        marginBottom: 16,
     },
+    errorText: {
+        color: "#CC0000",
+        fontSize: 13,
+    },
+    fieldError: {
+        color: "#CC0000",
+        fontSize: 12,
+        marginTop: 4,
+        marginBottom: 8,
+        marginLeft: 2,
+    },
+    // Buton register
     registerButton: {
-        backgroundColor: COLORS.mainblue,
-        borderRadius: 12,
-        padding: 16,
-        alignItems: "center",
-        marginTop: 10,
+        borderRadius: 14,
+        overflow: "hidden",
+        marginTop: 14,
         marginBottom: 20,
         shadowColor: COLORS.mainblue,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.3,
-        shadowRadius: 8,
+        shadowOffset: { width: 0, height: 6 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
         elevation: 8,
+    },
+    registerButtonDisabled: {
+        opacity: 0.7,
+    },
+    registerButtonGradient: {
+        paddingVertical: 16,
+        alignItems: "center",
+        borderRadius: 14,
     },
     registerButtonText: {
         color: "#fff",
         fontSize: 16,
         fontWeight: "bold",
+        letterSpacing: 0.5,
     },
+    // Login link bottom
     loginContainer: {
         flexDirection: "row",
         justifyContent: "center",
         alignItems: "center",
     },
     loginText: {
-        color: "#666",
+        color: "#888",
         fontSize: 14,
     },
     loginLink: {
-        color: COLORS.mainblue,
+        color: COLORS.orange,
         fontSize: 14,
-        fontWeight: "600",
-    },
-    errorText: {
-        color: "#ff4444",
-        fontSize: 12,
-        marginTop: 4,
-        marginBottom: 8,
-        alignSelf: "flex-start",
-    },
-    errorBox: {
-        backgroundColor: "#ffebee",
-        padding: 12,
-        borderRadius: 8,
-        marginBottom: 20,
-        borderLeftWidth: 4,
-        borderColor: "#ff4444",
-    },
-    generalErrorText: {
-        color: "#c62828",
-        fontSize: 14,
-        fontWeight: "500",
+        fontWeight: "700",
     },
 });

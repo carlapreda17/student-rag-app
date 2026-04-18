@@ -30,6 +30,9 @@ class SuggestiiRequest(BaseModel):
     doc_ids: list[str] | None = None
     numar_sugestii: int = 3
 
+class FeedbackRequest(BaseModel):
+    message_id: str
+    feedback: bool | None  # True = like, False = dislike, None = retras
 
 @router.post("/chat")
 async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
@@ -68,9 +71,11 @@ async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = D
         raise HTTPException(status_code=500, detail=f"Eroare GPT: {str(e)}")
     latency_ms = int((time.time() - start) * 1000)
 
+    new_interaction_id = str(uuid.uuid4())
+
     # 7. Salvează interacțiunea în DB (chunks cu text pentru evaluare RAG)
     db.add(ChatInteraction(
-        interaction_id=str(uuid.uuid4()),
+        interaction_id=new_interaction_id,
         question=req.intrebare,
         answer=raspuns,
         contexts=chunks,
@@ -83,6 +88,7 @@ async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = D
         "raspuns": raspuns,
         "surse":   surse,
         "tokens": tokens,
+        "message_id": new_interaction_id,
     }
 
 
@@ -149,3 +155,19 @@ async def genereaza_sugestii(req: SuggestiiRequest, user=Depends(get_current_use
         sugestii = []
 
     return {"sugestii": sugestii}
+
+
+@router.post("/chat/feedback")
+async def save_feedback(req: FeedbackRequest, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    # Căutăm interacțiunea în baza de date după acel UUID
+    interaction = db.query(ChatInteraction).filter(ChatInteraction.interaction_id == req.message_id).first()
+    print(req.message_id, interaction.interaction_id)
+    
+    if not interaction:
+        raise HTTPException(status_code=404, detail="Mesajul nu a fost găsit.")
+    
+    # Actualizăm coloana feedback
+    interaction.feedback = req.feedback
+    db.commit()
+    
+    return {"status": "success", "message": "Feedback actualizat."}

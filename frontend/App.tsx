@@ -11,6 +11,7 @@ import Chat from "./src/pages/Chat";
 import LibraryPage from "./src/pages/LibraryPage";
 import Test from "./src/pages/Test";
 import TakeTest from "./src/pages/TakeTest";
+import ProgressPage from "./src/pages/ProgressPage";
 import { AuthProvider } from "./src/components/AuthContext";
 import s from "./styles"
 
@@ -52,6 +53,7 @@ export default function App() {
                         <Stack.Screen name="Chat" component={Chat} />
                         <Stack.Screen name="Test" component={Test} />
                         <Stack.Screen name="TakeTest" component={TakeTest} />
+                        <Stack.Screen name="ProgressPage" component={ProgressPage} />
                     </Stack.Navigator>
                 </NavigationContainer>
             </View>

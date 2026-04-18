@@ -29,7 +29,7 @@ const STATS = [
 const QUICK_ACTIONS = [
     { label: "Chat RAG", icon: "chatbubbles-outline", color: "#6366f1", bg: "#ede9fe", screen: "Chat" },
     { label: "Test grilă", icon: "clipboard-outline", color: "#10b981", bg: "#d1fae5", screen: "Test" },
-    { label: "Progres", icon: "stats-chart-outline", color: "#f59e0b", bg: "#fef3c7", screen: "Progress" },
+    { label: "Progres", icon: "stats-chart-outline", color: "#f59e0b", bg: "#fef3c7", screen: "ProgressPage" },
 ];
 
 export default function HomePage({ navigation }: any) {
@@ -215,13 +215,21 @@ function DocCard({ doc, navigation }: { doc: any; navigation: any }) {
         iconBg = "#ede9fe"; // mov deschis
     }
 
+    const displayName = (() => {
+        try {
+            return decodeURIComponent(doc.nume_fisier ?? "");
+        } catch {
+            return doc.nume_fisier ?? "";
+        }
+    })();
+
     return (
         <View style={styles.docCard}>
             <View style={[styles.docIcon, { backgroundColor: iconBg }]}>
                 <Ionicons name="document-text-outline" size={24} color={iconColor} />
             </View>
             <View style={{ flex: 1 }}>
-                <Text style={styles.docName} numberOfLines={1}>{doc.nume_fisier}</Text>
+                <Text style={styles.docName} numberOfLines={1}>{displayName}</Text>
                 <Text style={styles.docMeta}>{ext} · {doc.folder}</Text>
             </View>
             <View style={styles.docActions}>

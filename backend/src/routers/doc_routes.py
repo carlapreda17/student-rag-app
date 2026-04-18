@@ -376,3 +376,117 @@ async def save_test_result(req: SaveTestResultRequest, user=Depends(get_current_
     db.commit()
 
     return {"mesaj": "Rezultatele testului au fost salvate cu succes!"}
+
+
+@router.get("/my-tests")
+async def get_my_tests(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Returnează toate testele completate ale utilizatorului,
+    inclusiv întrebările cu răspunsurile, ordonate descrescător după dată.
+    """
+    tests = (
+        db.query(Test)
+        .filter(Test.user_id == user["id"], Test.score.isnot(None))
+        .order_by(Test.completed_at.desc())
+        .all()
+    )
+
+    result = []
+    for t in tests:
+        questions = (
+            db.query(TestQuestion)
+            .filter(TestQuestion.test_id == t.test_id)
+            .order_by(TestQuestion.question_index)
+            .all()
+        )
+
+        # Încearcă să obții numele fișierului din Qdrant sau din documents table
+        # Dacă ai tabelul `documents` în SQL:
+        # doc = db.query(Document).filter(Document.doc_id == t.doc_id).first()
+        # nume_fisier = doc.nume_fisier if doc else t.doc_id
+
+        # Fallback: caută în Qdrant (dacă nu ai tabelul documents în SQL)
+        try:
+            from src.services.ingestion import qdrant, COLLECTION_NAME
+            from qdrant_client.http import models as qdrant_models
+
+            scroll_result = qdrant.scroll(
+                collection_name=COLLECTION_NAME,
+                scroll_filter=qdrant_models.Filter(
+                    must=[
+                        qdrant_models.FieldCondition(
+                            key="doc_id",
+                            match=qdrant_models.MatchValue(value=t.doc_id)
+                        )
+                    ]
+                ),
+                limit=1,
+                with_payload=True,
+                with_vectors=False,
+            )
+            chunks = scroll_result[0]
+            nume_fisier = chunks[0].payload.get("nume_fisier", t.doc_id) if chunks else t.doc_id
+        except Exception:
+            nume_fisier = t.doc_id
+
+        result.append({
+            "test_id": t.test_id,
+            "doc_id": t.doc_id,
+            "nume_fisier": nume_fisier,
+            "difficulty": t.difficulty,
+            "num_questions": t.num_questions,
+            "score": t.score,
+            "completed_at": t.completed_at.isoformat() if t.completed_at else None,
+            "questions": [
+                {
+                    "question_index": q.question_index,
+                    "question_text": q.question_text,
+                    "correct_answer": q.correct_answer,
+                    "user_answer": q.user_answer,
+                    "is_correct": q.is_correct,
+                    "explanation": q.explanation,
+                }
+                for q in questions
+            ],
+        })
+
+    return {"tests": result}
+
+
+@router.get("/test-questions/{test_id}")
+async def get_test_questions(test_id: str, user=Depends(get_current_user), db: Session = Depends(get_db)):
+    """
+    Returnează întrebările unui test specific (pentru butonul 'Refă testul').
+    Verifică că testul aparține utilizatorului curent.
+    """
+    test = (
+        db.query(Test)
+        .filter(Test.test_id == test_id, Test.user_id == user["id"])
+        .first()
+    )
+    if not test:
+        raise HTTPException(status_code=404, detail="Testul nu a fost găsit.")
+
+    questions = (
+        db.query(TestQuestion)
+        .filter(TestQuestion.test_id == test_id)
+        .order_by(TestQuestion.question_index)
+        .all()
+    )
+
+    return {
+        "test_id": test_id,
+        "questions": [
+            {
+                "id": q.question_index,
+                "question": q.question_text,
+                "options": q.options if isinstance(q.options, dict) else {},
+                "correct": q.correct_answer,
+                "explanation": q.explanation,
+                # Reset răspunsul utilizatorului pentru reluare
+                "user_answer": None,
+                "is_correct": None,
+            }
+            for q in questions
+        ],
+    }

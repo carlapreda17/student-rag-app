@@ -23,6 +23,8 @@ import ScreenWrapper from "../components/ScreenWrapper";
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 const { width } = Dimensions.get("window");
 
+const decodeName = (name: string) => { try { return decodeURIComponent(name); } catch { return name; } };
+
 // ─── Types ───────────────────────────────────────────────────
 type Message = {
   id: string;
@@ -31,6 +33,7 @@ type Message = {
   surse?: { nume_fisier: string; chunk_index: number; text_preview: string }[];
   tokens?: number;
   timestamp: Date;
+  feedback?: boolean | null;
 };
 
 type DocInfo = {
@@ -176,7 +179,7 @@ export default function Chat({ route, navigation }: any) {
       const data = await res.json();
 
       const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
+        id: data.message_id,
         role: "assistant",
         text: data.raspuns,
         surse: data.surse ?? [],
@@ -209,9 +212,46 @@ export default function Chat({ route, navigation }: any) {
     );
   };
 
+  const handleFeedback = async (messageId: string, type: "like" | "dislike") => {
+    // Traducem intenția în Boolean
+    const booleanFeedback = type === "like" ? true : false;
+
+    // 1. Update imediat în interfață (Optimistic UI)
+    setMessages((prev) =>
+      prev.map((msg) =>
+        msg.id === messageId 
+          ? { ...msg, feedback: msg.feedback === booleanFeedback ? null : booleanFeedback } 
+          : msg
+      )
+    );
+
+    // 2. Apel API
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const currentMsg = messages.find((m) => m.id === messageId);
+      
+      // Dacă avea deja același feedback (ex: dă click iar pe Like), trimitem null ca să îl anulăm
+      const newFeedback = currentMsg?.feedback === booleanFeedback ? null : booleanFeedback;
+
+      await fetch(`${API_URL}/chat/feedback`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          message_id: messageId,
+          feedback: newFeedback, // Acum trimite true/false/null
+        }),
+      });
+    } catch (error) {
+      console.error("Eroare la trimiterea feedback-ului:", error);
+    }
+  };
+
   const selectedDocNames = documente
     .filter((d) => selectedDocs.includes(d.doc_id))
-    .map((d) => d.nume_fisier);
+    .map((d) => decodeName(d.nume_fisier));
 
   // ─── Render ────────────────────────────────────────────────
   return (
@@ -316,7 +356,7 @@ export default function Chat({ route, navigation }: any) {
                           />
                           <View style={{ flex: 1 }}>
                             <Text style={styles.docPickerItemText} numberOfLines={1}>
-                              {doc.nume_fisier}
+                              {decodeName(doc.nume_fisier)}
                             </Text>
                             <Text style={styles.docPickerItemMeta}>
                               {doc.tip_fisier} · {doc.folder}
@@ -355,7 +395,7 @@ export default function Chat({ route, navigation }: any) {
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
               keyboardDismissMode="on-drag" // Ascunde automat tastatura la scroll
-              renderItem={({ item }) => <ChatBubble message={item} />}
+              renderItem={({ item }) => <ChatBubble message={item} onFeedback={handleFeedback}/>}
               onContentSizeChange={() =>
                 flatListRef.current?.scrollToEnd({ animated: true })
               }
@@ -417,55 +457,74 @@ export default function Chat({ route, navigation }: any) {
 }
 
 // ─── Chat Bubble ─────────────────────────────────────────────
-function ChatBubble({ message }: { message: Message }) {
+function ChatBubble({ message, onFeedback }: { message: Message, onFeedback: (id: string, type: "like" | "dislike") => void }) {
   const isUser = message.role === "user";
 
   return (
-    <View
-      style={[
-        styles.bubbleRow,
-        isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant,
-      ]}
-    >
+    <View style={[styles.bubbleRow, isUser ? styles.bubbleRowUser : styles.bubbleRowAssistant]}>
       {!isUser && (
         <View style={styles.assistantAvatar}>
           <Ionicons name="sparkles" size={14} color="#fff" />
         </View>
       )}
 
-      <View
-        style={[
-          styles.bubble,
-          isUser ? styles.bubbleUser : styles.bubbleAssistant,
-        ]}
-      >
-        <Text style={[styles.bubbleText, isUser && { color: "#fff" }]}>
-          {message.text}
-        </Text>
+      <View style={{ flex: 1, maxWidth: "100%" }}>
+        <View style={[styles.bubble, isUser ? styles.bubbleUser : styles.bubbleAssistant]}>
+          <Text style={[styles.bubbleText, isUser && { color: "#fff" }]}>
+            {message.text}
+          </Text>
 
-        {!isUser && message.surse && message.surse.length > 0 && (
-          <View style={styles.sursaContainer}>
-            <View style={styles.sursaHeader}>
-              <Ionicons name="document-text-outline" size={12} color={COLORS.orange} />
-              <Text style={styles.sursaTitle}>Surse ({message.surse.length})</Text>
-            </View>
-            {message.surse.map((s, i) => (
-              <View key={i} style={styles.sursaItem}>
-                <Text style={styles.sursaName} numberOfLines={1}>
-                  {s.nume_fisier}
-                </Text>
-                {s.text_preview && (
-                  <Text style={styles.sursaPreview} numberOfLines={2}>
-                    „{s.text_preview}"
-                  </Text>
-                )}
+          {!isUser && message.surse && message.surse.length > 0 && (
+            <View style={styles.sursaContainer}>
+              <View style={styles.sursaHeader}>
+                <Ionicons name="document-text-outline" size={12} color={COLORS.orange} />
+                <Text style={styles.sursaTitle}>Surse ({message.surse.length})</Text>
               </View>
-            ))}
-          </View>
-        )}
+              {message.surse.map((s, i) => (
+                <View key={i} style={styles.sursaItem}>
+                  <Text style={styles.sursaName} numberOfLines={1}>{decodeName(s.nume_fisier)}</Text>
+                  {s.text_preview && (
+                    <Text style={styles.sursaPreview} numberOfLines={2}>„{s.text_preview}"</Text>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
 
-        {!isUser && message.tokens && (
-          <Text style={styles.tokenInfo}>{message.tokens} tokens</Text>
+        {/* --- NOU: Secțiunea de Tokens și Feedback --- */}
+        {!isUser && (
+          <View style={styles.footerInfoRow}>
+             {message.tokens && (
+                <Text style={styles.tokenInfo}>{message.tokens} tokens</Text>
+             )}
+             
+            <View style={styles.feedbackRow}>
+                {/* Buton LIKE (true) */}
+                <TouchableOpacity 
+                  onPress={() => onFeedback(message.id, "like")} 
+                  style={[styles.feedbackBtn, message.feedback === true && styles.feedbackBtnActive]}
+                >
+                  <Ionicons 
+                    name={message.feedback === true ? "thumbs-up" : "thumbs-up-outline"} 
+                    size={14} 
+                    color={message.feedback === true ? COLORS.green : "#9ca3af"} 
+                  />
+                </TouchableOpacity>
+
+                {/* Buton DISLIKE (false) */}
+                <TouchableOpacity 
+                  onPress={() => onFeedback(message.id, "dislike")} 
+                  style={[styles.feedbackBtn, message.feedback === false && styles.feedbackBtnActiveWrong]}
+                >
+                  <Ionicons 
+                    name={message.feedback === false ? "thumbs-down" : "thumbs-down-outline"} 
+                    size={14} 
+                    color={message.feedback === false ? COLORS.brightRed : "#9ca3af"} 
+                  />
+                </TouchableOpacity>
+             </View>
+          </View>
         )}
       </View>
     </View>
@@ -966,5 +1025,30 @@ const styles = StyleSheet.create({
     backgroundColor: "#fed7aa",
     shadowOpacity: 0,
     elevation: 0,
+  },
+  // ── Stiluri pentru Feedback ──
+  footerInfoRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginTop: 4,
+    paddingLeft: 4,
+  },
+  feedbackRow: {
+    flexDirection: "row",
+    gap: 6,
+  },
+  
+  // Stiluri comune pentru butoanele de feedback
+  feedbackBtn: {
+    padding: 6,
+    borderRadius: 8,
+    backgroundColor: "#f8f7ff",
+  },
+  feedbackBtnActive: {
+    backgroundColor: "#dcfce7", // Verde deschis
+  },
+  feedbackBtnActiveWrong: {
+    backgroundColor: "#fee2e2", // Roșu deschis
   },
 });

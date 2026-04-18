@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 from src.routers.auth_routes import router as auth_router
 from src.routers.rag_routes import router as rag_router
 from src.routers.doc_routes import router as doc_router
+from src.routers.admin_routes import router as admin_router
 
 load_dotenv()  
 ORIGIN = os.getenv("ORIGIN", "*")  
@@ -29,6 +30,7 @@ app.add_middleware(
 app.include_router(auth_router)
 app.include_router(rag_router)
 app.include_router(doc_router)
+app.include_router(admin_router)
 
 @app.get("/")
 def read_root():

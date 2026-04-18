@@ -21,6 +21,8 @@ import UploadModal from "../components/UploadModal";
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 const FILTER_TABS = ["Toate", "PDF", "DOCX", "TXT", "PPT"];
 
+const decodeName = (name: string) => { try { return decodeURIComponent(name); } catch { return name; } };
+
 // ── Tipuri ──
 type FileType = "PDF" | "DOCX" | "TXT" | "PPT" | "PPTX";
 interface Document {
@@ -142,7 +144,7 @@ export default function LibraryPage({ navigation }: any) {
     // ── Logica de Filtrare și Grupare ──
     const filteredDocs = documents.filter((doc) => {
         // Filtru după search (titlu sau folder)
-        const matchesSearch = doc.nume_fisier.toLowerCase().includes(search.toLowerCase()) || 
+        const matchesSearch = decodeName(doc.nume_fisier).toLowerCase().includes(search.toLowerCase()) ||
                               doc.folder.toLowerCase().includes(search.toLowerCase());
         // Filtru după tab (PDF, DOCX, TXT, PPT)
         const docType = doc.tip_fisier.toUpperCase();
@@ -255,13 +257,13 @@ export default function LibraryPage({ navigation }: any) {
                                         <View style={styles.docTopRow}>
                                             <FileIcon type={doc.tip_fisier} />
                                             <View style={styles.docInfo}>
-                                                <Text style={styles.docName} numberOfLines={2}>{doc.nume_fisier}</Text>
+                                                <Text style={styles.docName} numberOfLines={2}>{decodeName(doc.nume_fisier)}</Text>
                                                 <Text style={styles.docMeta}>{doc.tip_fisier.toUpperCase()} · {doc.folder}</Text>
                                             </View>
                                             
                                             {/* Delete Button */}
                                             <TouchableOpacity 
-                                                onPress={() => handleDelete(doc.doc_id, doc.nume_fisier)} 
+                                                onPress={() => handleDelete(doc.doc_id, decodeName(doc.nume_fisier))}
                                                 style={styles.deleteIconBtn}
                                             >
                                                 <Ionicons name="trash-outline" size={18} color={COLORS.brightRed} />

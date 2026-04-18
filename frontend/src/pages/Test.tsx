@@ -28,6 +28,8 @@ interface Document {
   tip_fisier: FileType;
 }
 
+const decodeName = (name: string) => { try { return decodeURIComponent(name); } catch { return name; } };
+
 interface Difficulty {
   key: DifficultyKey;
   label: string;
@@ -109,7 +111,7 @@ export default function Test({ route, navigation }: any) {
 
   const filtered = documente.filter(
     (d) =>
-      d.nume_fisier.toLowerCase().includes(search.toLowerCase()) ||
+      decodeName(d.nume_fisier).toLowerCase().includes(search.toLowerCase()) ||
       d.folder.toLowerCase().includes(search.toLowerCase())
   );
 
@@ -274,7 +276,7 @@ export default function Test({ route, navigation }: any) {
                         >
                           <FileIcon type={doc.tip_fisier} />
                           <View style={styles.docInfo}>
-                            <Text style={styles.docName} numberOfLines={2}>{doc.nume_fisier}</Text>
+                            <Text style={styles.docName} numberOfLines={2}>{decodeName(doc.nume_fisier)}</Text>
                             <Text style={styles.docMeta}>{doc.tip_fisier} · {doc.folder}</Text>
                           </View>
                           <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
@@ -320,7 +322,7 @@ export default function Test({ route, navigation }: any) {
             <View style={styles.docPreview}>
               <FileIcon type={selectedDoc.tip_fisier} />
               <View style={{ flex: 1, marginLeft: 12 }}>
-                <Text style={styles.docPreviewName} numberOfLines={1}>{selectedDoc.nume_fisier}</Text>
+                <Text style={styles.docPreviewName} numberOfLines={1}>{decodeName(selectedDoc.nume_fisier)}</Text>
                 <Text style={styles.docPreviewMeta}>{selectedDoc.tip_fisier} · {selectedDoc.folder}</Text>
               </View>
               <TouchableOpacity onPress={() => setStep(1)} activeOpacity={0.7} style={styles.changeBtnBox}>
@@ -394,7 +396,7 @@ export default function Test({ route, navigation }: any) {
               <Text style={styles.summaryTitle}>SUMAR TEST</Text>
               {(
                 [
-                  ["📄 Document", selectedDoc.nume_fisier],
+                  ["📄 Document", decodeName(selectedDoc.nume_fisier)],
                   ["❓ Întrebări", `${numQuestions} întrebări`],
                   ["🎯 Dificultate", `${selectedDiff.icon} ${selectedDiff.label}`],
                 ] as [string, string][]
@@ -444,7 +446,7 @@ export default function Test({ route, navigation }: any) {
                 </View>
                 <Text style={styles.generateTitle}>Testul este gata!</Text>
                 <Text style={styles.generateSub}>
-                  {numQuestions} întrebări · {selectedDiff.label} · {selectedDoc?.nume_fisier}
+                  {numQuestions} întrebări · {selectedDiff.label} · {decodeName(selectedDoc?.nume_fisier ?? "")}
                 </Text>
                 <TouchableOpacity
                   style={[styles.primaryBtn, { marginTop: 32, paddingHorizontal: 40 }]}

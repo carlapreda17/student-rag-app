@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
 from sqlalchemy.types import JSON
 from sqlalchemy.sql import func
 import uuid
@@ -15,4 +15,5 @@ class ChatInteraction(Base):
     contexts = Column(JSON, nullable=True)
     model_used = Column(String(50), nullable=False)
     latency_ms = Column(Integer, nullable=True)
+    feedback = Column(Boolean, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
