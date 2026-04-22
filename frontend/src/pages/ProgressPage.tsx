@@ -39,6 +39,7 @@ type QuestionResult = {
     user_answer: string;
     is_correct: boolean;
     explanation: string;
+    options: { A: string; B: string; C: string; D: string };
 };
 
 type ProgressStats = {
@@ -138,26 +139,44 @@ export default function ProgressPage({ navigation }: any) {
         try {
             setRetaking(test.test_id);
             const token = await AsyncStorage.getItem("token");
-
+            console.log("here")
             // Fetch întrebările originale dacă nu le avem deja
-            let questions = test.questions;
-            if (!questions) {
+            let rawQuestions = test.questions;
+            console.log("Întrebări existente în test:", rawQuestions);
+            if (!rawQuestions || rawQuestions.length === 0) {
                 const res = await fetch(`${API_URL}/test-questions/${test.test_id}`, {
                     headers: { Authorization: `Bearer ${token}` },
                 });
                 if (!res.ok) throw new Error();
                 const data = await res.json();
-                questions = data.questions;
+                rawQuestions = data.questions;
+                console.log("Întrebări fetchuite pentru retake:", rawQuestions);
             }
 
+            if (!rawQuestions) {
+                throw new Error("Unable to load questions");
+            }
+
+            // mapează question_text → question, correct_answer → correct etc.
+            const questions = (rawQuestions as any[]).map(q => ({
+                id: q.id ?? q.question_index,
+                question: q.question ?? q.question_text,
+                options: q.options,
+                correct: q.correct ?? q.correct_answer,
+                explanation: q.explanation,
+
+
+            }));
+
+           
             // Navighează la pagina de test cu datele existente (fără re-generare)
-            navigation.navigate("Test", {
+            navigation.navigate("TakeTest", {
+                questions,
                 retakeMode: true,
-                test_id: test.test_id,
-                doc_id: test.doc_id,
+                testID: test.test_id,
+                docID: test.doc_id,
                 difficulty: test.difficulty,
                 num_questions: test.num_questions,
-                questions,
                 nume_fisier: test.nume_fisier,
             });
         } catch {
@@ -281,12 +300,10 @@ export default function ProgressPage({ navigation }: any) {
                                 <View style={styles.cardHeader}>
                                     <Ionicons name="warning-outline" size={18} color="#ef4444" />
                                     <Text style={[styles.cardTitle, { marginLeft: 6, marginBottom: 0 }]}>
-                                        Noțiuni greșite frecvent
+                                       Ultimele {wrongQuestions.length} întrebări la care ai greșit
                                     </Text>
                                 </View>
-                                <Text style={styles.cardSubtitle}>
-                                    Ultimele {wrongQuestions.length} întrebări la care ai greșit
-                                </Text>
+                               
                                 {wrongQuestions.map((q, i) => (
                                     <View key={i} style={styles.weakItem}>
                                         <View style={styles.weakIndex}>
@@ -595,13 +612,13 @@ const styles = StyleSheet.create({
     cardHeader: {
         flexDirection: "row",
         alignItems: "center",
-        marginBottom: 4,
+        marginBottom: 20,
     },
     cardTitle: {
         fontSize: 15,
         fontWeight: "700",
         color: "#1a1a2e",
-        marginBottom: 10,
+        marginBottom: 30,
     },
     cardSubtitle: {
         fontSize: 12,

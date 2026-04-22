@@ -19,6 +19,11 @@ import { useAuth } from "../components/AuthContext";
 import CustomInput from "../components/CustomInput";
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { OAuthProvider, signInWithCredential } from "firebase/auth";
+import { auth } from "../config/firebase";
+
+
 const { height } = Dimensions.get("window");
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
@@ -93,7 +98,51 @@ export default function Login({ navigation }: any) {
 
     };
 
+    const handleAppleLogin = async () => {
+        try {
+            const credential = await AppleAuthentication.signInAsync({
+                requestedScopes: [
+                    AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                    AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                ],
+            });
 
+            const { identityToken, fullName, email } = credential;
+            if (!identityToken) return;
+
+            setIsLoading(true);
+
+            const response = await fetch(`${API_URL}/login/apple`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    appleToken: identityToken,
+                    firstName: fullName?.givenName || null,
+                    lastName: fullName?.familyName || null,
+                    appleEmail: email || null,
+                }),
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                await login(data.user, data.token);
+                navigation.navigate("HomePage");
+            } else {
+                setErrors({
+                    general: data.detail || "Autentificarea a eșuat.",
+                });
+            }
+        } catch (e: any) {
+            if (e.code === "ERR_REQUEST_CANCELED") {
+                console.log("Utilizatorul a anulat.");
+            } else {
+                console.error("Eroare Apple Login:", e);
+                setErrors({ general: "Eroare la autentificare." });
+            }
+        } finally {
+            setIsLoading(false);
+        }
+    };
     const handleRegister = () => {
         navigation.navigate("Register");
     };
@@ -181,6 +230,16 @@ export default function Login({ navigation }: any) {
                             <Text style={styles.dividerText}>sau</Text>
                             <View style={styles.dividerLine} />
                         </View>
+                        {/* --- BUTONUL DE APPLE RĂNDAT DOAR PE IOS --- */}
+                        {Platform.OS === 'ios' && (
+                            <AppleAuthentication.AppleAuthenticationButton
+                                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                                cornerRadius={14}
+                                style={styles.appleButton}
+                                onPress={handleAppleLogin}
+                            />
+                        )}
                         <View style={styles.signupContainer}>
                             <Text style={styles.signupText}>Nu ai cont? </Text>
                             <TouchableOpacity onPress={handleRegister}>
@@ -214,8 +273,8 @@ const styles = StyleSheet.create({
     },
    
     logo: {
-        width: 230, // era 110, acum mai mare
-        height: 230,
+        width: 250, // era 110, acum mai mare
+        height: 250,
         marginTop: height * 0.1,
     },
     // Card
@@ -337,5 +396,11 @@ const styles = StyleSheet.create({
         color: COLORS.orange,
         fontSize: 14,
         fontWeight: "700",
+    },
+
+    appleButton: {
+        width: '100%',
+        height: 50,
+        marginBottom: 20,
     },
 });

@@ -37,12 +37,14 @@ export default function HomePage({ navigation }: any) {
     const [documente, setDocumente] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
     const [fileToUpload, setFileToUpload] = useState<any>(null);
+    const [testsStats, setTestsStats] = useState({ total: 0, avgScore: "—" });
     // Mock stats — înlocuiește cu date reale din API
-    const stats = [documente.length, 12, "78%"];
+    const stats = [documente.length, testsStats.total, testsStats.avgScore];
     const previewDocumente = documente.slice(0, 3);
 
     useEffect(() => {
         fetchDocumente();
+        fetchTestsStats();
     }, []);
 
     const fetchDocumente = async () => {
@@ -61,6 +63,29 @@ export default function HomePage({ navigation }: any) {
             setLoading(false);
         }
     };
+
+    const fetchTestsStats = async () => {
+        try {
+            const token = await AsyncStorage.getItem("token");
+            const response = await fetch(`${API_URL}/my-tests`, {
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            const data = await response.json();
+            const tests = data.tests ?? [];
+            const total = tests.length;
+            const avg =
+                total > 0
+                    ? Math.round(tests.reduce((s: number, t: any) => s + t.score, 0) / total)
+                    : null;
+            setTestsStats({
+                total,
+                avgScore: avg !== null ? `${avg}%` : "—",
+            });
+        } catch (e) {
+            console.error("Eroare fetch stats teste:", e);
+        }
+    };
+
 
     const handleLogout = async () => {
         await logout();
@@ -172,16 +197,7 @@ export default function HomePage({ navigation }: any) {
                                         {previewDocumente.map((doc) => (
                                             <DocCard key={doc.doc_id} doc={doc} navigation={navigation} />
                                         ))}
-                                        {/* Buton dashed la final */}
-                                        <TouchableOpacity
-                                             style={[styles.dashedBtn, uploading && { opacity: 0.6 }]}
-                                             onPress={handleInitiateUpload}
-                                             disabled={uploading}
-                                             activeOpacity={0.8}
-                                        >
-                                            <Ionicons name="add-circle-outline" size={20} color={COLORS.mainblue} />
-                                            <Text style={styles.dashedBtnText}>Adaugă document nou</Text>
-                                        </TouchableOpacity>
+                                       
                                     </View>
                                 )}
                             </View>

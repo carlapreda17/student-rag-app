@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Enum, DateTime, Boolean, Text
+from sqlalchemy import Column, Integer, String, ForeignKey, Enum, DateTime, Boolean, Text, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 from database.database import Base
+
 
 class Test(Base):
     __tablename__ = "tests"
@@ -37,6 +38,7 @@ class TestQuestion(Base):
     question_text = Column(Text, nullable=False)
     correct_answer = Column(String(1), nullable=False)
     user_answer = Column(String(1), nullable=True)
+    options = Column(JSON, nullable=True) 
     is_correct = Column(Boolean, nullable=True)
     explanation = Column(Text, nullable=False)
 

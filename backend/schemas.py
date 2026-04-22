@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import Optional
 
 
 class UserCreate(BaseModel):
@@ -18,6 +19,8 @@ class QuestionResult(BaseModel):
     user_answer: str | None
     is_correct: bool | None
     explanation: str
+    options: dict | None  
+
 
 class SaveTestResultRequest(BaseModel):
     test_id: str
@@ -26,3 +29,15 @@ class SaveTestResultRequest(BaseModel):
     num_questions: int
     score: int
     questions: list[QuestionResult] = []
+
+
+class UpdateTestResultRequest(BaseModel):
+    test_id: str
+    score: int
+    questions: list[QuestionResult]  
+
+class AppleLoginRequest(BaseModel):
+    appleToken: str
+    firstName: str | None = None
+    lastName: str | None = None
+    appleEmail: str | None = None

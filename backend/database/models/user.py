@@ -12,3 +12,4 @@ class User(Base):
     email = Column(String, unique=True, index=True)
     phone = Column(String)
     is_admin = Column(Boolean, default=False, server_default=expression.false(), nullable=False)
+    firebase_uid = Column(String(128), unique=True, nullable=True)

@@ -11,8 +11,9 @@ from pydantic import BaseModel
 from src.routers.auth_routes import get_current_user
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
-from schemas import SaveTestResultRequest
+from schemas import SaveTestResultRequest, QuestionResult, UpdateTestResultRequest
 from database.models.test import Test, TestQuestion
+from src.services.utils import parse_options
 
 
 load_dotenv()
@@ -371,6 +372,7 @@ async def save_test_result(req: SaveTestResultRequest, user=Depends(get_current_
             user_answer=q.user_answer,
             is_correct=q.is_correct,
             explanation=q.explanation,
+            options=q.options 
         ))
 
     db.commit()
@@ -445,6 +447,7 @@ async def get_my_tests(user=Depends(get_current_user), db: Session = Depends(get
                     "user_answer": q.user_answer,
                     "is_correct": q.is_correct,
                     "explanation": q.explanation,
+                    "options": parse_options(q.options) if hasattr(q, 'options') else {},
                 }
                 for q in questions
             ],
@@ -459,6 +462,7 @@ async def get_test_questions(test_id: str, user=Depends(get_current_user), db: S
     Returnează întrebările unui test specific (pentru butonul 'Refă testul').
     Verifică că testul aparține utilizatorului curent.
     """
+    print(f"Fetching questions for test_id={test_id} and user_id={user['id']}")
     test = (
         db.query(Test)
         .filter(Test.test_id == test_id, Test.user_id == user["id"])
@@ -467,6 +471,7 @@ async def get_test_questions(test_id: str, user=Depends(get_current_user), db: S
     if not test:
         raise HTTPException(status_code=404, detail="Testul nu a fost găsit.")
 
+    print(f"Test găsit: {test.test_id} pentru doc_id={test.doc_id}, generat la {test.completed_at}")
     questions = (
         db.query(TestQuestion)
         .filter(TestQuestion.test_id == test_id)
@@ -474,13 +479,16 @@ async def get_test_questions(test_id: str, user=Depends(get_current_user), db: S
         .all()
     )
 
+    for q in questions:
+        print(q)
+
     return {
         "test_id": test_id,
         "questions": [
             {
                 "id": q.question_index,
                 "question": q.question_text,
-                "options": q.options if isinstance(q.options, dict) else {},
+                "options": parse_options(q.options) if hasattr(q, 'options') else {},
                 "correct": q.correct_answer,
                 "explanation": q.explanation,
                 # Reset răspunsul utilizatorului pentru reluare
@@ -490,3 +498,44 @@ async def get_test_questions(test_id: str, user=Depends(get_current_user), db: S
             for q in questions
         ],
     }
+
+
+@router.put("/update-test-result")
+async def update_test_result(req: UpdateTestResultRequest, user=Depends(get_current_user), db: Session = Depends(get_db)
+):
+    """
+    Actualizează scorul și răspunsurile unui test existent (folosit la retake).
+    Verifică că testul aparține utilizatorului curent.
+    """
+    test = (
+        db.query(Test)
+        .filter(Test.test_id == req.test_id, Test.user_id == user["id"])
+        .first()
+    )
+    if not test:
+        raise HTTPException(status_code=404, detail="Testul nu a fost găsit.")
+
+    # Actualizează scorul și data completării
+    test.score = req.score
+    test.completed_at = func.now()
+
+    # Șterge întrebările vechi și inserează-le pe cele noi cu răspunsurile actualizate
+    db.query(TestQuestion).filter(TestQuestion.test_id == req.test_id).delete()
+
+    for q in req.questions:
+        db.add(TestQuestion(
+            test_id=req.test_id,
+            question_index=q.question_index,
+            question_text=q.question_text,
+            options=q.options if isinstance(q.options, str) else (
+                __import__('json').dumps(q.options) if q.options else None
+            ),
+            correct_answer=q.correct_answer,
+            user_answer=q.user_answer,
+            is_correct=q.is_correct,
+            explanation=q.explanation,
+        ))
+
+    db.commit()
+
+    return {"mesaj": f"Testul a fost actualizat cu succes! Scor nou: {req.score}%"}

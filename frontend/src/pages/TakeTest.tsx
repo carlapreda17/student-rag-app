@@ -38,12 +38,13 @@ export default function TakeTest({ route, navigation }: any) {
   const difficulty: string = route.params?.difficulty || "medium";
   const docID: string = route.params?.docID || "";
   const testID: string = route.params?.testID || "";
-
+  const retakeMode: boolean = route.params?.retakeMode || false;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedAnswers, setSelectedAnswers] = useState<Record<string, string>>({});
   const [screen, setScreen] = useState<ScreenState>("quiz");
   const [reviewFilter, setReviewFilter] = useState<"all" | "correct" | "wrong">("all");
 
+  console.log("Întrebări primite în TakeTest:", route.params);
   // ── Dacă nu avem întrebări ──
   if (!questions || questions.length === 0) {
     return (
@@ -77,38 +78,59 @@ export default function TakeTest({ route, navigation }: any) {
   const scorePercentage = Math.round((correctCount / questions.length) * 100);
 
   const saveResultsToDB = async () => {
+    const questionsPayload = questions.map((q, idx) => ({
+      question_index: idx,
+      question_text: q.question,
+      correct_answer: q.correct,
+      user_answer: selectedAnswers[q.id] ?? null,
+      is_correct: selectedAnswers[q.id] != null
+        ? selectedAnswers[q.id] === q.correct
+        : null,
+      explanation: q.explanation,
+      options: q.options,
+    }));
+
     try {
       const token = await AsyncStorage.getItem("token");
-      await fetch(`${API_URL}/save-test-result`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          test_id: testID,
-          doc_id: docID,
-          difficulty: difficulty,
-          num_questions: questions.length,
-          score: scorePercentage,
-          questions: questions.map((q, idx) => ({
-            question_index: idx,
-            question_text: q.question,
-            correct_answer: q.correct,
-            user_answer: selectedAnswers[q.id] ?? null,
-            is_correct: selectedAnswers[q.id] != null
-              ? selectedAnswers[q.id] === q.correct
-              : null,
-            explanation: q.explanation,
-          })),
-        }),
-      });
-      console.log("Salvat în BD cu succes!");
+
+      if (retakeMode) {
+        // UPDATE — suprascrie scorul și răspunsurile existente
+        await fetch(`${API_URL}/update-test-result`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            test_id: testID,
+            score: scorePercentage,
+            questions: questionsPayload,
+          }),
+        });
+        console.log("Test actualizat în BD cu succes!");
+      } else {
+        // INSERT — test nou
+        await fetch(`${API_URL}/save-test-result`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            test_id: testID,
+            doc_id: docID,
+            difficulty: difficulty,
+            num_questions: questions.length,
+            score: scorePercentage,
+            questions: questionsPayload,
+          }),
+        });
+        console.log("Salvat în BD cu succes!");
+      }
     } catch (error) {
       console.error("Eroare la salvarea în baza de date:", error);
     }
   };
-
 
   // ── Handlers ──
   const handleSelectOption = (letter: string) => {

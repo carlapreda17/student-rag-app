@@ -5,12 +5,15 @@ import bcrypt
 from dotenv import load_dotenv
 from database.database import get_db
 from database.models.user import User
-from schemas import UserCreate, UserLogin
+from schemas import UserCreate, UserLogin, AppleLoginRequest
+from jose import jwt 
 from datetime import datetime, timedelta
-from jose import jwt, JWTError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
-
+import requests as http_requests
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+from cryptography.hazmat.backends import default_backend
+import base64
 
 load_dotenv()
 router = APIRouter(
@@ -18,16 +21,56 @@ router = APIRouter(
 )
 
 SECRET_KEY = os.getenv("SECRET_KEY")
+APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID")
 
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
+
 
 def create_access_token(data: dict):
     to_encode = data.copy()
     to_encode["exp"] = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
+def verify_apple_token(token: str):
+    try:
+        apple_keys = http_requests.get(
+            "https://appleid.apple.com/auth/keys"
+        ).json()["keys"]
+
+        header = jwt.get_unverified_header(token)
+        kid = header["kid"]
+
+        key_data = next(
+            k for k in apple_keys if k["kid"] == kid
+        )
+
+        def decode_value(val):
+            val += "=" * (4 - len(val) % 4)
+            return int.from_bytes(
+                base64.urlsafe_b64decode(val), "big"
+            )
+
+        n = decode_value(key_data["n"])
+        e = decode_value(key_data["e"])
+
+        public_key = RSAPublicNumbers(e, n).public_key(
+            default_backend()
+        )
+
+        payload = jwt.decode(
+            token,
+            public_key,
+            audience=APPLE_CLIENT_ID,
+            algorithms=["RS256"],
+            issuer="https://appleid.apple.com",
+        )
+        return payload
+
+    except Exception as e:
+        print(f"Eroare validare Apple: {str(e)}")
+        return None
 
 def get_current_user(token: str = Depends(oauth2_scheme)):
     try:
@@ -139,3 +182,58 @@ def get_current_admin(token: str = Depends(oauth2_scheme)):
         }
     except JWTError:
         raise HTTPException(status_code=401, detail="Token invalid sau expirat")
+
+@router.post("/login/apple")
+def login_apple(request: AppleLoginRequest, db: Session = Depends(get_db)):
+    payload = verify_apple_token(request.appleToken)
+    if not payload:
+        raise HTTPException(401, "Token Apple invalid.")
+
+    email = payload.get("email") or request.appleEmail
+    if not email:
+        raise HTTPException(400, "Nu am putut obține email-ul.")
+
+    apple_sub = payload["sub"]
+
+    user = db.query(User).filter(
+        (User.firebase_uid == apple_sub) | (User.email == email)
+    ).first()
+
+    if user:
+        if not user.firebase_uid:
+            user.firebase_uid = apple_sub
+            db.commit()
+    else:
+        username = (
+            (request.firstName or "")
+            + " "
+            + (request.lastName or "")
+        ).strip() or email.split("@")[0]
+
+        user = User(
+            username=username,
+            email=email,
+            password="apple_auth",
+            firebase_uid=apple_sub,
+            is_admin=False,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token({
+        "user_id": user.id_user,
+        "username": user.username,
+        "is_admin": user.is_admin,
+    })
+
+    return {
+        "status": "success",
+        "user": {
+            "id": user.id_user,
+            "username": user.username,
+            "email": user.email,
+            "is_admin": user.is_admin,
+        },
+        "token": token,
+    }

@@ -7,6 +7,9 @@ from src.routers.auth_routes import router as auth_router
 from src.routers.rag_routes import router as rag_router
 from src.routers.doc_routes import router as doc_router
 from src.routers.admin_routes import router as admin_router
+import firebase_admin
+from firebase_admin import credentials, auth as firebase_auth
+
 
 load_dotenv()  
 ORIGIN = os.getenv("ORIGIN", "*")  
@@ -18,6 +21,10 @@ app = FastAPI(
     title="API Disertație RAG",
     description="Backend-ul pentru aplicația de învățare a studenților"
 )
+
+if not firebase_admin._apps:
+    cred = credentials.Certificate("studdai-9f432-firebase-adminsdk-fbsvc-6eb054e329.json")
+    firebase_admin.initialize_app(cred)
 
 app.add_middleware(
     CORSMiddleware,
