@@ -5,6 +5,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
 import { COLORS } from "../../constants/theme";
 
+
 interface BackButtonProps {
     color?: string;
     onPress?: () => void;

@@ -41,3 +41,15 @@ class AppleLoginRequest(BaseModel):
     firstName: str | None = None
     lastName: str | None = None
     appleEmail: str | None = None
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class VerifyResetCodeRequest(BaseModel):
+    email: str
+    code: str
+
+class ResetPasswordRequest(BaseModel):
+    email: str
+    code: str
+    new_password: str

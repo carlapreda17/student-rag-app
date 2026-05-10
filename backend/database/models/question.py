@@ -10,6 +10,7 @@ class ChatInteraction(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True, index=True)
     interaction_id = Column(String(36), unique=True, index=True, nullable=False, default=lambda: str(uuid.uuid4()))
+    user_id = Column(Integer, nullable=False, index=True) 
     question = Column(Text, nullable=False)
     answer = Column(Text, nullable=False)
     contexts = Column(JSON, nullable=True)

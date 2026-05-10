@@ -17,6 +17,7 @@ import { COLORS } from "../../constants/theme";
 import ScreenWrapper from "../components/ScreenWrapper";
 import { useUpload } from "../components/useUpload";
 import UploadModal from "../components/UploadModal";
+import BackButton from "../components/BackButton";
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 const FILTER_TABS = ["Toate", "PDF", "DOCX", "TXT", "PPT"];
@@ -180,6 +181,7 @@ export default function LibraryPage({ navigation }: any) {
                 >
                     <Ionicons name="add" size={26} color="#fff" />
                 </TouchableOpacity>
+                <BackButton color="#f8fafc" onPress={() => navigation.goBack()} />
             </View>
 
             {/* ── Search Bar ── */}

@@ -543,7 +543,7 @@ function TestCard({
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-    // Header
+   
     header: {
         flexDirection: "row",
         justifyContent: "space-between",

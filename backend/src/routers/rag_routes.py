@@ -13,9 +13,14 @@ from src.routers.auth_routes import get_current_user
 from database.database import get_db
 from database.models.question import ChatInteraction
 from sqlalchemy.orm import Session
+from src.services.utils import  cleanup_old_messages
+from datetime import datetime, timedelta, timezone
+from sqlalchemy import and_
 
 CANDIDATE_K = 10
 FINAL_K = 4
+HISTORY_RETENTION_DAYS = 10
+
 
 load_dotenv()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
@@ -75,14 +80,17 @@ async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = D
 
     # 7. Salvează interacțiunea în DB (chunks cu text pentru evaluare RAG)
     db.add(ChatInteraction(
-        interaction_id=new_interaction_id,
-        question=req.intrebare,
-        answer=raspuns,
-        contexts=chunks,
-        model_used="gpt-4o-mini",
-        latency_ms=latency_ms,
-    ))
+            interaction_id=new_interaction_id,
+            user_id=user_id,
+            question=req.intrebare,
+            answer=raspuns,
+            contexts=chunks,
+            model_used="gpt-4o-mini",
+            latency_ms=latency_ms,
+        ))
     db.commit()
+
+    cleanup_old_messages(db, user_id)
 
     return {
         "raspuns": raspuns,
@@ -90,6 +98,58 @@ async def chat(req: ChatRequest, user=Depends(get_current_user), db: Session = D
         "tokens": tokens,
         "message_id": new_interaction_id,
     }
+
+@router.get("/chat/history")
+async def get_chat_history(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user_id = user["id"]
+ 
+    # Curăță automat mesajele expirate înainte de a returna
+    cleanup_old_messages(db, user_id)
+ 
+    cutoff = datetime.now(timezone.utc) - timedelta(days=HISTORY_RETENTION_DAYS)
+ 
+    interactions = (
+        db.query(ChatInteraction)
+        .filter(
+            and_(
+                ChatInteraction.user_id == user_id,
+                ChatInteraction.created_at >= cutoff,
+            )
+        )
+        .order_by(ChatInteraction.created_at.asc())
+        .all()
+    )
+ 
+    history = []
+    for row in interactions:
+        # Adaugă mesajul user-ului
+        history.append({
+            "id": f"user-{row.interaction_id}",
+            "role": "user",
+            "text": row.question,
+            "timestamp": row.created_at.isoformat(),
+        })
+        # Adaugă răspunsul asistentului
+        history.append({
+            "id": row.interaction_id,
+            "role": "assistant",
+            "text": row.answer,
+            "tokens": None,  # nu mai avem tokens salvat, opțional de adăugat
+            "feedback": row.feedback,
+            "timestamp": row.created_at.isoformat(),
+        })
+ 
+    return {"messages": history}
+
+@router.delete("/chat/history")
+async def delete_chat_history(user=Depends(get_current_user), db: Session = Depends(get_db)):
+    user_id = user["id"]
+    deleted = db.query(ChatInteraction).filter(
+        ChatInteraction.user_id == user_id
+    ).delete(synchronize_session="fetch")
+    db.commit()
+    return {"status": "success", "deleted_count": deleted}
+ 
 
 
 @router.post("/sugestii-intrebari")
@@ -129,6 +189,7 @@ async def genereaza_sugestii(req: SuggestiiRequest, user=Depends(get_current_use
                     "Generează exact {n} întrebări scurte și utile pe care un student "
                     "le-ar pune despre conținutul de mai jos. "
                     "Returnează DOAR un JSON array de stringuri, fără alte explicații."
+                   "Regula: Intrebarile trebuie sa fie in limba romana"
                 ).format(n=req.numar_sugestii),
             },
             {"role": "user", "content": context_preview},

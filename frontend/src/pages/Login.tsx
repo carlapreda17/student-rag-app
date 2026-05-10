@@ -206,7 +206,9 @@ export default function Login({ navigation }: any) {
                         )}
                         
                         <TouchableOpacity style={styles.forgotPassword}>
-                            <Text style={styles.forgotPasswordText}>Ai uitat parola?</Text>
+                            <Text style={styles.forgotPasswordText}  onPress={() => navigation.navigate("ForgotPassword")}
+                                >Ai uitat parola?
+                            </Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                             style={[styles.loginButton, isLoading && styles.loginButtonDisabled]}

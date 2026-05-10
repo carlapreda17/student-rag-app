@@ -12,7 +12,7 @@ const COLORS = {
     red:'#ff0303',
     darkRed:'#B31312',
     brightRed:'#ff4444',
-    green:'#68B984',
+    green:'#2bd659',
 };
 
 const FONT = {

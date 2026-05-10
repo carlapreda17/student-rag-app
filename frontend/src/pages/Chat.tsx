@@ -14,6 +14,8 @@ import {
   Animated,
   Dimensions,
   Pressable,
+  Alert,
+  Modal,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -43,6 +45,14 @@ type DocInfo = {
   tip_fisier: string;
 };
 
+type HistoryConversation = {
+  id: string;
+  question: string;
+  answerPreview: string;
+  answer: string;
+  timestamp: Date;
+};
+
 // ─── Component ───────────────────────────────────────────────
 export default function Chat({ route, navigation }: any) {
   const initialDocId = route?.params?.docId ?? null;
@@ -59,6 +69,11 @@ export default function Chat({ route, navigation }: any) {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [sugestii, setSugestii] = useState<string[]>([]);
   const [loadingSugestii, setLoadingSugestii] = useState(false);
+
+  // ── Istoric (modal separat) ──
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyConversations, setHistoryConversations] = useState<HistoryConversation[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
 
   const flatListRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -83,7 +98,7 @@ export default function Chat({ route, navigation }: any) {
     };
   }, []);
 
-  // ── Fetch documente ──
+  // ── Fetch documente la mount ──
   useEffect(() => {
     fetchDocumente();
     Animated.timing(fadeAnim, {
@@ -96,6 +111,50 @@ export default function Chat({ route, navigation }: any) {
   useEffect(() => {
     fetchSugestii();
   }, [selectedDocs]);
+
+  // ── Fetch istoricul conversațiilor (ultimele 10 zile) ──
+  const fetchHistory = async () => {
+    setShowHistory(true);
+    setLoadingHistory(true);
+    try {
+      const token = await AsyncStorage.getItem("token");
+      const res = await fetch(`${API_URL}/chat/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        console.error("Eroare fetch history:", res.status);
+        return;
+      }
+
+      const data = await res.json();
+      if (data.messages?.length > 0) {
+        // Grupează în perechi: user question + assistant answer
+        const convos: HistoryConversation[] = [];
+        for (let i = 0; i < data.messages.length; i++) {
+          const msg = data.messages[i];
+          if (msg.role === "user") {
+            const nextMsg = data.messages[i + 1];
+            convos.push({
+              id: nextMsg?.id ?? msg.id,
+              question: msg.text,
+              answerPreview: nextMsg?.text?.substring(0, 120) ?? "",
+              answer: nextMsg?.text ?? "Nu există un răspuns salvat pentru această întrebare.", // <-- ADAUGĂ ASTA
+              timestamp: new Date(msg.timestamp),
+            });
+            if (nextMsg?.role === "assistant") i++; // skip the paired answer
+          }
+        }
+        setHistoryConversations(convos);
+      } else {
+        setHistoryConversations([]);
+      }
+    } catch (err) {
+      console.error("Eroare fetch history:", err);
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const fetchSugestii = async () => {
     setLoadingSugestii(true);
@@ -136,6 +195,33 @@ export default function Chat({ route, navigation }: any) {
     } finally {
       setLoadingDocs(false);
     }
+  };
+
+  // ── Șterge tot istoricul (din DB + local) ──
+  const handleClearHistory = () => {
+    Alert.alert(
+      "Șterge istoricul",
+      "Ești sigur că vrei să ștergi tot istoricul conversațiilor? Acțiunea este ireversibilă.",
+      [
+        { text: "Anulează", style: "cancel" },
+        {
+          text: "Șterge",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem("token");
+              await fetch(`${API_URL}/chat/history`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${token}` },
+              });
+            } catch (err) {
+              console.error("Eroare ștergere istoric:", err);
+            }
+            setMessages([]);
+          },
+        },
+      ]
+    );
   };
 
   // ── Trimite mesaj ──
@@ -210,27 +296,23 @@ export default function Chat({ route, navigation }: any) {
     setSelectedDocs((prev) =>
       prev.includes(docId) ? prev.filter((d) => d !== docId) : [...prev, docId]
     );
+    setMessages([]);
   };
 
   const handleFeedback = async (messageId: string, type: "like" | "dislike") => {
-    // Traducem intenția în Boolean
     const booleanFeedback = type === "like" ? true : false;
 
-    // 1. Update imediat în interfață (Optimistic UI)
     setMessages((prev) =>
       prev.map((msg) =>
-        msg.id === messageId 
-          ? { ...msg, feedback: msg.feedback === booleanFeedback ? null : booleanFeedback } 
+        msg.id === messageId
+          ? { ...msg, feedback: msg.feedback === booleanFeedback ? null : booleanFeedback }
           : msg
       )
     );
 
-    // 2. Apel API
     try {
       const token = await AsyncStorage.getItem("token");
       const currentMsg = messages.find((m) => m.id === messageId);
-      
-      // Dacă avea deja același feedback (ex: dă click iar pe Like), trimitem null ca să îl anulăm
       const newFeedback = currentMsg?.feedback === booleanFeedback ? null : booleanFeedback;
 
       await fetch(`${API_URL}/chat/feedback`, {
@@ -241,7 +323,7 @@ export default function Chat({ route, navigation }: any) {
         },
         body: JSON.stringify({
           message_id: messageId,
-          feedback: newFeedback, // Acum trimite true/false/null
+          feedback: newFeedback,
         }),
       });
     } catch (error) {
@@ -253,15 +335,26 @@ export default function Chat({ route, navigation }: any) {
     .filter((d) => selectedDocs.includes(d.doc_id))
     .map((d) => decodeName(d.nume_fisier));
 
+  // ─── Helper: separatoare pe zile în istoric ────────────────
+  const getDateLabel = (date: Date): string => {
+    const today = new Date();
+    const msgDate = new Date(date);
+    const diffDays = Math.floor((today.getTime() - msgDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return "Astăzi";
+    if (diffDays === 1) return "Ieri";
+    return msgDate.toLocaleDateString("ro-RO", { day: "numeric", month: "long", year: "numeric" });
+  };
+
   // ─── Render ────────────────────────────────────────────────
   return (
-    <ScreenWrapper>
-      <KeyboardAvoidingView
-        style={{ flex: 1, backgroundColor: "#f8f7ff" }}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0} // Decalaj redus si optimizat pentru iOS
-      >
-        {/* Container pentru Header + Dropdown cu zIndex puternic */}
+    <KeyboardAvoidingView
+      style={{ flex: 1, backgroundColor: "#f8f7ff" }}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 10 : 0}
+    >
+      <ScreenWrapper>
+        {/* Container pentru Header + Dropdown */}
         <View style={{ zIndex: 10, elevation: 10, position: "relative" }}>
           {/* ── Header ── */}
           <View style={styles.header}>
@@ -296,9 +389,15 @@ export default function Chat({ route, navigation }: any) {
             </View>
 
             <View style={styles.headerRight}>
+              <TouchableOpacity
+                onPress={fetchHistory}
+                style={styles.historyBtn}
+              >
+                <Ionicons name="time-outline" size={18} color="#fff" />
+              </TouchableOpacity>
               {messages.length > 0 && (
                 <TouchableOpacity
-                  onPress={() => setMessages([])}
+                  onPress={handleClearHistory}
                   style={styles.clearBtn}
                 >
                   <Ionicons name="trash-outline" size={17} color="#fff" />
@@ -307,7 +406,7 @@ export default function Chat({ route, navigation }: any) {
             </View>
           </View>
 
-          {/* ── Document Picker (Plutește perfect deasupra, raportat la View-ul părinte) ── */}
+          {/* ── Document Picker ── */}
           {showDocPicker && (
             <View style={styles.docPicker}>
               <ScrollView style={{ maxHeight: 250 }} nestedScrollEnabled showsVerticalScrollIndicator={true}>
@@ -324,7 +423,7 @@ export default function Chat({ route, navigation }: any) {
                         styles.docPickerItem,
                         selectedDocs.length === 0 && styles.docPickerItemActive,
                       ]}
-                      onPress={() => setSelectedDocs([])}
+                      onPress={() => { setSelectedDocs([]); setMessages([]); }}
                     >
                       <Ionicons
                         name={selectedDocs.length === 0 ? "radio-button-on" : "radio-button-off"}
@@ -372,7 +471,7 @@ export default function Chat({ route, navigation }: any) {
           )}
         </View>
 
-        {/* ── Zona principală de Chat (Fără TouchableWithoutFeedback care strica flexbox-ul) ── */}
+        {/* ── Zona principală de Chat ── */}
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
           {messages.length === 0 ? (
             <EmptyChat
@@ -394,8 +493,27 @@ export default function Chat({ route, navigation }: any) {
               contentContainerStyle={styles.messageList}
               showsVerticalScrollIndicator={false}
               keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag" // Ascunde automat tastatura la scroll
-              renderItem={({ item }) => <ChatBubble message={item} onFeedback={handleFeedback}/>}
+              keyboardDismissMode="on-drag"
+              renderItem={({ item, index }) => {
+                // Separator pe zile
+                const prevMsg = index > 0 ? messages[index - 1] : null;
+                const currentLabel = getDateLabel(item.timestamp);
+                const prevLabel = prevMsg ? getDateLabel(prevMsg.timestamp) : null;
+                const showDateSep = currentLabel !== prevLabel;
+
+                return (
+                  <>
+                    {showDateSep && (
+                      <View style={styles.dateSeparator}>
+                        <View style={styles.dateLine} />
+                        <Text style={styles.dateLabel}>{currentLabel}</Text>
+                        <View style={styles.dateLine} />
+                      </View>
+                    )}
+                    <ChatBubble message={item} onFeedback={handleFeedback} />
+                  </>
+                );
+              }}
               onContentSizeChange={() =>
                 flatListRef.current?.scrollToEnd({ animated: true })
               }
@@ -451,8 +569,94 @@ export default function Chat({ route, navigation }: any) {
             </TouchableOpacity>
           </View>
         </View>
-      </KeyboardAvoidingView>
-    </ScreenWrapper>
+        {/* ── Modal Istoric ── */}
+        <Modal
+          visible={showHistory}
+          animationType="slide"
+          presentationStyle="pageSheet"
+          onRequestClose={() => setShowHistory(false)}
+        >
+          <View style={styles.historyModal}>
+            {/* Header modal */}
+            <View style={styles.historyModalHeader}>
+              <View>
+                <Text style={styles.historyModalTitle}>Istoric conversații</Text>
+                <Text style={styles.historyModalSubtitle}>Ultimele 10 zile</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setShowHistory(false)}
+                style={styles.historyCloseBtn}
+              >
+                <Ionicons name="close" size={22} color="#374151" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Conținut */}
+            {loadingHistory ? (
+              <View style={styles.historyLoading}>
+                <ActivityIndicator size="large" color={COLORS.mainblue} />
+                <Text style={styles.historyLoadingText}>Se încarcă istoricul...</Text>
+              </View>
+            ) : historyConversations.length === 0 ? (
+              <View style={styles.historyEmpty}>
+                <Ionicons name="chatbubbles-outline" size={48} color="#d1d5db" />
+                <Text style={styles.historyEmptyTitle}>Nicio conversație</Text>
+                <Text style={styles.historyEmptySubtitle}>
+                  Conversațiile tale din ultimele 10 zile vor apărea aici.
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={historyConversations}
+                keyExtractor={(item) => item.id}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 30 }}
+                showsVerticalScrollIndicator={false}
+                renderItem={({ item, index }) => {
+                  const prevConvo = index > 0 ? historyConversations[index - 1] : null;
+                  const currentLabel = getDateLabel(item.timestamp);
+                  const prevLabel = prevConvo ? getDateLabel(prevConvo.timestamp) : null;
+                  const showDateSep = currentLabel !== prevLabel;
+
+                  return (
+                    <>
+                      {showDateSep && (
+                        <Text style={styles.historyDateHeader}>{currentLabel}</Text>
+                      )}
+                      <TouchableOpacity style={styles.historyCard} activeOpacity={0.7} 
+                      onPress={() => {
+                        setShowHistory(false); // Închidem modalul mai întâi
+                        navigation.navigate("HistoryDetail", { 
+                          question: item.question, 
+                          answer: item.answer, 
+                          date: item.timestamp.toISOString() 
+                        });}}>
+                        <View style={styles.historyCardIcon}>
+                          <Ionicons name="chatbubble-outline" size={16} color={COLORS.mainblue} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.historyCardTitle} numberOfLines={2}>
+                            {item.question}
+                          </Text>
+                          {item.answerPreview ? (
+                            <Text style={styles.historyCardPreview} numberOfLines={1}>
+                              {item.answerPreview}...
+                            </Text>
+                          ) : null}
+                        </View>
+                        <Text style={styles.historyCardTime}>
+                          {item.timestamp.toLocaleTimeString("ro-RO", { hour: "2-digit", minute: "2-digit" })}
+                        </Text>
+                      </TouchableOpacity>
+                    </>
+                  );
+                }}
+              />
+            )}
+          </View>
+        </Modal>
+
+      </ScreenWrapper>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -492,38 +696,35 @@ function ChatBubble({ message, onFeedback }: { message: Message, onFeedback: (id
           )}
         </View>
 
-        {/* --- NOU: Secțiunea de Tokens și Feedback --- */}
         {!isUser && (
           <View style={styles.footerInfoRow}>
-             {message.tokens && (
-                <Text style={styles.tokenInfo}>{message.tokens} tokens</Text>
-             )}
-             
-            <View style={styles.feedbackRow}>
-                {/* Buton LIKE (true) */}
-                <TouchableOpacity 
-                  onPress={() => onFeedback(message.id, "like")} 
-                  style={[styles.feedbackBtn, message.feedback === true && styles.feedbackBtnActive]}
-                >
-                  <Ionicons 
-                    name={message.feedback === true ? "thumbs-up" : "thumbs-up-outline"} 
-                    size={14} 
-                    color={message.feedback === true ? COLORS.green : "#9ca3af"} 
-                  />
-                </TouchableOpacity>
+            {message.tokens && (
+              <Text style={styles.tokenInfo}>{message.tokens} tokens</Text>
+            )}
 
-                {/* Buton DISLIKE (false) */}
-                <TouchableOpacity 
-                  onPress={() => onFeedback(message.id, "dislike")} 
-                  style={[styles.feedbackBtn, message.feedback === false && styles.feedbackBtnActiveWrong]}
-                >
-                  <Ionicons 
-                    name={message.feedback === false ? "thumbs-down" : "thumbs-down-outline"} 
-                    size={14} 
-                    color={message.feedback === false ? COLORS.brightRed : "#9ca3af"} 
-                  />
-                </TouchableOpacity>
-             </View>
+            <View style={styles.feedbackRow}>
+              <TouchableOpacity
+                onPress={() => onFeedback(message.id, "like")}
+                style={[styles.feedbackBtn, message.feedback === true && styles.feedbackBtnActive]}
+              >
+                <Ionicons
+                  name={message.feedback === true ? "thumbs-up" : "thumbs-up-outline"}
+                  size={14}
+                  color={message.feedback === true ? COLORS.green : "#9ca3af"}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={() => onFeedback(message.id, "dislike")}
+                style={[styles.feedbackBtn, message.feedback === false && styles.feedbackBtnActiveWrong]}
+              >
+                <Ionicons
+                  name={message.feedback === false ? "thumbs-down" : "thumbs-down-outline"}
+                  size={14}
+                  color={message.feedback === false ? COLORS.brightRed : "#9ca3af"}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
         )}
       </View>
@@ -548,9 +749,9 @@ function EmptyChat({
   closeMenus: () => void;
 }) {
   return (
-    <ScrollView 
-      contentContainerStyle={styles.emptyChatScroll} 
-      showsVerticalScrollIndicator={false} 
+    <ScrollView
+      contentContainerStyle={styles.emptyChatScroll}
+      showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
       <Pressable style={styles.emptyChatPressable} onPress={closeMenus}>
@@ -685,19 +886,31 @@ const styles = StyleSheet.create({
     maxWidth: width * 0.45,
   },
   headerRight: {
-    width: 36,
-    alignItems: "flex-end",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  historyBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: COLORS.orange,
+    alignItems: "center",
+    justifyContent: "center",
   },
   clearBtn: {
-    padding: 7,
+    width: 40,
+    height: 40,
+    borderRadius: 12,
     backgroundColor: COLORS.orange,
-    borderRadius: 10,
+    alignItems: "center",
+    justifyContent: "center",
   },
 
   /* ── Doc Picker ── */
   docPicker: {
     position: "absolute",
-    top: "100%", // Asigură că pleacă fix de sub baza header-ului
+    top: "100%",
     left: 0,
     right: 0,
     backgroundColor: "#fff",
@@ -843,8 +1056,27 @@ const styles = StyleSheet.create({
     marginTop: 6,
     textAlign: "right",
   },
+  /* ── Date separator ── */
+  dateSeparator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginVertical: 16,
+    gap: 10,
+  },
+  dateLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: "#e5e7eb",
+  },
+  dateLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
 
-  /* ── Empty Chat (Scrollable acum) ── */
+  /* ── Empty Chat ── */
   emptyChatScroll: {
     flexGrow: 1,
   },
@@ -945,11 +1177,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingVertical: 20,
   },
-  suggestionsLoadingText: {
-    fontSize: 12,
-    color: "#9ca3af",
-    marginLeft: 8,
-  },
 
   /* ── Typing ── */
   typingRow: {
@@ -985,7 +1212,7 @@ const styles = StyleSheet.create({
   inputBar: {
     paddingHorizontal: 12,
     paddingTop: 8,
-    paddingBottom: Platform.OS === "ios" ? 16 : 10, // Un extra padding pentru iOS la marginea de jos
+    paddingBottom: Platform.OS === "ios" ? 16 : 10,
     backgroundColor: "#fff",
     borderTopWidth: 1,
     borderTopColor: "#ece9ff",
@@ -1026,7 +1253,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0,
     elevation: 0,
   },
-  // ── Stiluri pentru Feedback ──
   footerInfoRow: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -1038,17 +1264,126 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 6,
   },
-  
-  // Stiluri comune pentru butoanele de feedback
   feedbackBtn: {
     padding: 6,
     borderRadius: 8,
     backgroundColor: "#f8f7ff",
   },
   feedbackBtnActive: {
-    backgroundColor: "#dcfce7", // Verde deschis
+    backgroundColor: "#dcfce7",
   },
   feedbackBtnActiveWrong: {
-    backgroundColor: "#fee2e2", // Roșu deschis
+    backgroundColor: "#fee2e2",
+  },
+
+  /* ── History Modal ── */
+  historyModal: {
+    flex: 1,
+    backgroundColor: "#f8f7ff",
+  },
+  historyModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 16 : 20,
+    paddingBottom: 16,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#ece9ff",
+  },
+  historyModalTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1a1a2e",
+  },
+  historyModalSubtitle: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  historyCloseBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#f3f4f6",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyLoading: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  historyLoadingText: {
+    fontSize: 13,
+    color: "#9ca3af",
+  },
+  historyEmpty: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+    gap: 8,
+  },
+  historyEmptyTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#6b7280",
+    marginTop: 4,
+  },
+  historyEmptySubtitle: {
+    fontSize: 13,
+    color: "#9ca3af",
+    textAlign: "center",
+    lineHeight: 20,
+  },
+  historyDateHeader: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: "#9ca3af",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 20,
+    marginBottom: 8,
+    paddingLeft: 4,
+  },
+  historyCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: "#ece9ff",
+    gap: 12,
+  },
+  historyCardIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "#ede9fe",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  historyCardTitle: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#1a1a2e",
+    lineHeight: 20,
+  },
+  historyCardPreview: {
+    fontSize: 12,
+    color: "#9ca3af",
+    marginTop: 2,
+  },
+  historyCardTime: {
+    fontSize: 10,
+    color: "#b0b8c9",
+    marginLeft: "auto",
+    flexShrink: 0,
   },
 });

@@ -12,6 +12,8 @@ import LibraryPage from "./src/pages/LibraryPage";
 import Test from "./src/pages/Test";
 import TakeTest from "./src/pages/TakeTest";
 import ProgressPage from "./src/pages/ProgressPage";
+import ForgotPassword from "./src/pages/ForgotPassword";
+import HistoryDetail from "./src/pages/HistoryDetail";
 import { AuthProvider } from "./src/components/AuthContext";
 import s from "./styles"
 
@@ -54,6 +56,8 @@ export default function App() {
                         <Stack.Screen name="Test" component={Test} />
                         <Stack.Screen name="TakeTest" component={TakeTest} />
                         <Stack.Screen name="ProgressPage" component={ProgressPage} />
+                        <Stack.Screen name="ForgotPassword" component={ForgotPassword} />
+                        <Stack.Screen name="HistoryDetail" component={HistoryDetail} />
                     </Stack.Navigator>
                 </NavigationContainer>
             </View>

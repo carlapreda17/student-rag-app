@@ -5,7 +5,7 @@ import bcrypt
 from dotenv import load_dotenv
 from database.database import get_db
 from database.models.user import User
-from schemas import UserCreate, UserLogin, AppleLoginRequest
+from schemas import UserCreate, UserLogin, AppleLoginRequest, ForgotPasswordRequest, VerifyResetCodeRequest, ResetPasswordRequest
 from jose import jwt 
 from datetime import datetime, timedelta
 from fastapi import Depends, HTTPException, status
@@ -13,6 +13,10 @@ from fastapi.security import OAuth2PasswordBearer
 import requests as http_requests
 from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
 from cryptography.hazmat.backends import default_backend
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 import base64
 
 load_dotenv()
@@ -23,6 +27,14 @@ router = APIRouter(
 SECRET_KEY = os.getenv("SECRET_KEY")
 APPLE_CLIENT_ID = os.getenv("APPLE_CLIENT_ID")
 
+# Email config
+EMAIL_ADDRESS = os.getenv("EMAIL_ADDRESS")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+SMTP_SERVER = os.getenv("SMTP_SERVER", "smtp.gmail.com")
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+
+# Stocare temporară coduri de resetare
+reset_codes: dict = {}
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60 * 24 * 7 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/login")
@@ -237,3 +249,140 @@ def login_apple(request: AppleLoginRequest, db: Session = Depends(get_db)):
         },
         "token": token,
     }
+
+def send_reset_email(to_email: str, code: str):
+    """Trimite codul de resetare pe email."""
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to_email
+    msg["Subject"] = "StuddAI — Cod de resetare parolă"
+
+    body = f"""
+    <html>
+    <body style="font-family: Arial, sans-serif; background: #f9fafb; padding: 40px;">
+        <div style="max-width: 480px; margin: 0 auto; background: #fff; border-radius: 16px; padding: 32px; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+            <h2 style="color: #f97316; margin-bottom: 8px;">StuddAI</h2>
+            <p style="color: #374151; font-size: 15px;">Ai solicitat resetarea parolei. Folosește codul de mai jos:</p>
+            <div style="background: #eef2ff; border-radius: 12px; padding: 20px; text-align: center; margin: 24px 0;">
+                <span style="font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #4f46e5;">{code}</span>
+            </div>
+            <p style="color: #6b7280; font-size: 13px;">Codul expiră în <strong>10 minute</strong>.</p>
+            <p style="color: #6b7280; font-size: 13px;">Dacă nu ai solicitat resetarea, ignoră acest email.</p>
+        </div>
+    </body>
+    </html>
+    """
+
+    msg.attach(MIMEText(body, "html"))
+
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        server.send_message(msg)
+
+
+@router.post("/forgot-password")
+def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    """Trimite un cod de 6 cifre pe email-ul utilizatorului."""
+    # Verifică dacă email-ul există
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        # Nu dezvăluim dacă email-ul există sau nu (securitate)
+        # Returnăm succes oricum
+        return {"message": "Dacă email-ul există, vei primi un cod de verificare."}
+
+    # Verifică dacă user-ul e logat cu Apple (nu are parolă)
+    if user.password == "apple_auth":
+        raise HTTPException(
+            status_code=400,
+            detail="Acest cont folosește autentificare Apple. Nu poți reseta parola."
+        )
+
+    # Generează cod de 6 cifre
+    code = str(random.randint(100000, 999999))
+
+    # Salvează codul cu expirare de 10 minute
+    reset_codes[request.email] = {
+        "code": code,
+        "expires_at": datetime.utcnow() + timedelta(minutes=10),
+    }
+
+    # Trimite email-ul
+    try:
+        send_reset_email(request.email, code)
+    except Exception as e:
+        print(f"Eroare trimitere email: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail="Nu am putut trimite email-ul. Încearcă din nou."
+        )
+
+    return {"message": "Dacă email-ul există, vei primi un cod de verificare."}
+
+@router.post("/verify-reset-code")
+def verify_reset_code(request: VerifyResetCodeRequest):
+    """Verifică dacă codul introdus este valid și nu a expirat."""
+    stored = reset_codes.get(request.email)
+
+    if not stored:
+        raise HTTPException(
+            status_code=400,
+            detail="Nu a fost solicitat niciun cod pentru acest email."
+        )
+
+    if datetime.utcnow() > stored["expires_at"]:
+        del reset_codes[request.email]
+        raise HTTPException(
+            status_code=400,
+            detail="Codul a expirat. Solicită un cod nou."
+        )
+
+    if stored["code"] != request.code:
+        raise HTTPException(
+            status_code=400,
+            detail="Codul introdus este incorect."
+        )
+
+    return {"message": "Codul este valid. Poți seta o parolă nouă."}
+
+
+@router.post("/reset-password")
+def reset_password(request: ResetPasswordRequest, db: Session = Depends(get_db)):
+    """Resetează parola utilizatorului după verificarea codului."""
+    # Verifică din nou codul
+    stored = reset_codes.get(request.email)
+
+    if not stored:
+        raise HTTPException(status_code=400, detail="Sesiunea a expirat. Încearcă din nou.")
+
+    if datetime.utcnow() > stored["expires_at"]:
+        del reset_codes[request.email]
+        raise HTTPException(status_code=400, detail="Codul a expirat.")
+
+    if stored["code"] != request.code:
+        raise HTTPException(status_code=400, detail="Codul este incorect.")
+
+    # Găsește user-ul
+    user = db.query(User).filter(User.email == request.email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Utilizatorul nu a fost găsit.")
+
+    # Validare parolă nouă
+    if len(request.new_password) < 6:
+        raise HTTPException(
+            status_code=400,
+            detail="Parola trebuie să aibă minim 6 caractere."
+        )
+
+    # Hash parola nouă
+    parola_bytes = request.new_password.encode("utf-8")
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(parola_bytes, salt).decode("utf-8")
+
+    user.password = hashed
+    db.commit()
+
+    # Șterge codul folosit
+    del reset_codes[request.email]
+
+    return {"message": "Parola a fost resetată cu succes!"}
